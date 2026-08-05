@@ -52,9 +52,20 @@ Assets/
         RecipeData.cs
         RecipeDatabase.cs
       Gameplay/
+        Stations/
+          CounterController.cs
+          FridgeController.cs
+          HeatStationControllerBase.cs
+          IngridientDisplayStationBase.cs
+          IStationController.cs
+          OvenController.cs
+          ShelvesController.cs
+          StationControllerBase.cs
+          StoveController.cs
         FuzzyCookingEvaluator.cs
         GameplayManager.cs
         GameStateMachine.cs
+        KitchenStationType.cs
       Main Menu/
         CreditController.cs
         MainMenuManager.cs
@@ -126,6 +137,60 @@ Assets/
 <files>
 This section contains the contents of the repository's files.
 
+<file path="Assets/_Project/Audio/AudioManager.cs">
+using UnityEngine;
+
+namespace MasakanTradisional.Core.Audio
+{
+    public class AudioManager : MonoBehaviour
+    {
+        public static AudioManager Instance { get; private set; }
+
+        [Header("Audio Sources")]
+        [SerializeField] private AudioSource bgmSource;
+        [SerializeField] private AudioSource sfxSource;
+
+        [Header("Clips")]
+        [SerializeField] private AudioClip menuBGM;
+        [SerializeField] private AudioClip buttonClickSFX;
+
+        private void Awake()
+        {
+            if (Instance == null)
+            {
+                Instance = this;
+                DontDestroyOnLoad(gameObject);
+            }
+            else
+            {
+                Destroy(gameObject);
+            }
+        }
+
+        private void Start()
+        {
+            PlayBGM(menuBGM);
+        }
+
+        public void PlayBGM(AudioClip clip)
+        {
+            if (clip == null || bgmSource.clip == clip) return;
+            bgmSource.clip = clip;
+            bgmSource.loop = true;
+            bgmSource.Play();
+        }
+
+        public void PlayButtonSFX()
+        {
+            if (buttonClickSFX != null && sfxSource != null)
+            {
+                sfxSource.PlayOneShot(buttonClickSFX);
+            }
+        }
+    }
+}
+</file>
+
 <file path="Assets/_Project/ScriptableObjects/FuzzyCookingData.cs">
 using System;
 using UnityEngine;
@@ -177,6 +242,325 @@ namespace MasakanTradisional.Gameplay.Evaluation
         public float ShortTimeLimit => shortTimeLimit;
         public float IdealTimeTarget => idealTimeTarget;
         public float LongTimeLimit => longTimeLimit;
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Data/RecipeDatabase.cs">
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace MasakanTradisional.Data
+{
+    [CreateAssetMenu(fileName = "RecipeDatabase", menuName = "Masakan Tradisional/Data/Recipe Database")]
+    public class RecipeDatabase : ScriptableObject
+    {
+        [SerializeField] private List<RecipeData> recipes = new List<RecipeData>();
+
+        public IReadOnlyList<RecipeData> Recipes => recipes;
+
+        public RecipeData GetRecipeById(string id)
+        {
+            return recipes.Find(r => r != null && r.recipeId == id);
+        }
+
+        public int TotalRecipeCount => recipes.Count;
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Gameplay/Stations/CounterController.cs">
+namespace MasakanTradisional.Gameplay.Stations
+{
+    /// <summary>
+    /// Counter workstation: Chop / Grind / Mix / PlateAndGarnish steps.
+    /// </summary>
+    public class CounterController : IngredientDisplayStationBase
+    {
+        public override KitchenStationType StationType => KitchenStationType.Counter;
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Gameplay/Stations/FridgeController.cs">
+namespace MasakanTradisional.Gameplay.Stations
+{
+    /// <summary>
+    /// Fridge workstation: cold/perishable ingredients, used for Prepare steps.
+    /// </summary>
+    public class FridgeController : IngredientDisplayStationBase
+    {
+        public override KitchenStationType StationType => KitchenStationType.Fridge;
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Gameplay/Stations/HeatStationControllerBase.cs">
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+using MasakanTradisional.Core.Audio;
+using MasakanTradisional.Data;
+ 
+namespace MasakanTradisional.Gameplay.Stations
+{
+    /// <summary>
+    /// Shared behaviour for any station that exposes an adjustable heat value and a
+    /// start/pause cooking timer (Stove, Oven). New heat-based stations only need to
+    /// subclass this and set StationType - no duplicated slider/timer code.
+    /// </summary>
+    public abstract class HeatStationControllerBase : StationControllerBase, IHeatStationController
+    {
+        [Header("Heat Controls")]
+        [SerializeField] protected Slider heatSlider;
+        [SerializeField] protected TMP_Text currentHeatText;
+        [SerializeField] protected TMP_Text targetHeatText;
+ 
+        [Header("Timer Controls")]
+        [SerializeField] protected TMP_Text cookingTimerText;
+        [SerializeField] protected TMP_Text targetTimerText;
+        [SerializeField] protected Button startCookingButton;
+        [SerializeField] protected TMP_Text startButtonText;
+ 
+        protected bool isCookingActive = false;
+        protected float currentCookingTime = 0f;
+        protected float currentHeatValue = 0f;
+ 
+        public float CurrentHeat => currentHeatValue;
+        public float ElapsedCookingTime => currentCookingTime;
+ 
+        protected virtual void Awake()
+        {
+            if (heatSlider != null) heatSlider.onValueChanged.AddListener(OnHeatSliderChanged);
+            if (startCookingButton != null) startCookingButton.onClick.AddListener(ToggleCookingTimer);
+        }
+ 
+        protected virtual void Update()
+        {
+            if (!isCookingActive) return;
+            currentCookingTime += Time.deltaTime;
+            UpdateTimerText();
+        }
+ 
+        public override void Activate(CookingStep step)
+        {
+            base.Activate(step); // caches currentStep, shows panel, calls RefreshUI()
+ 
+            if (heatSlider != null)
+            {
+                heatSlider.minValue = 0f;
+                heatSlider.maxValue = Mathf.Max(200f, step.targetTemperature * 1.5f);
+                heatSlider.value = step.targetTemperature > 0f ? step.targetTemperature * 0.8f : 0f;
+                currentHeatValue = heatSlider.value;
+            }
+ 
+            isCookingActive = false;
+            currentCookingTime = 0f;
+            UpdateTimerText();
+ 
+            if (targetHeatText != null) targetHeatText.text = $"Target Heat: {step.targetTemperature:F0}\u00B0C";
+            if (targetTimerText != null) targetTimerText.text = $"Target Time: {step.timeLimitSeconds:F0}s";
+            if (startButtonText != null) startButtonText.text = "Start Cooking";
+        }
+ 
+        protected virtual void OnHeatSliderChanged(float value)
+        {
+            currentHeatValue = value;
+            if (currentHeatText != null) currentHeatText.text = $"Heat: {currentHeatValue:F0}\u00B0C";
+        }
+ 
+        protected virtual void ToggleCookingTimer()
+        {
+            AudioManager.Instance?.PlayButtonSFX();
+            isCookingActive = !isCookingActive;
+            if (startButtonText != null)
+            {
+                startButtonText.text = isCookingActive ? "Pause Cooking" : "Resume Cooking";
+            }
+        }
+ 
+        protected virtual void UpdateTimerText()
+        {
+            if (cookingTimerText != null) cookingTimerText.text = $"Time: {currentCookingTime:F1}s";
+        }
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Gameplay/Stations/IngridientDisplayStationBase.cs">
+using System.Text;
+using TMPro;
+using UnityEngine;
+ 
+namespace MasakanTradisional.Gameplay.Stations
+{
+    /// <summary>
+    /// Shared base for simple stations that just need to display the current step's
+    /// required ingredients (Shelves, Fridge, Counter). Extend a concrete subclass
+    /// with drag-and-drop or interaction logic later without touching this base.
+    /// </summary>
+    public abstract class IngredientDisplayStationBase : StationControllerBase
+    {
+        [Header("Ingredient Display")]
+        [SerializeField] protected TMP_Text ingredientListText;
+ 
+        protected override void RefreshUI()
+        {
+            if (ingredientListText == null || currentStep == null) return;
+            ingredientListText.text = BuildIngredientListText();
+        }
+ 
+        private string BuildIngredientListText()
+        {
+            if (currentStep.requiredIngredients == null || currentStep.requiredIngredients.Count == 0)
+                return "No ingredients required for this step.";
+ 
+            var lines = new StringBuilder();
+            foreach (var ing in currentStep.requiredIngredients)
+            {
+                lines.AppendLine($"- {ing.ingredientName} ({ing.amount} {ing.unit})");
+            }
+            return lines.ToString();
+        }
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Gameplay/Stations/IStationController.cs">
+using MasakanTradisional.Data;
+ 
+namespace MasakanTradisional.Gameplay.Stations
+{
+    /// <summary>
+    /// Contract for any workstation panel (Shelves, Fridge, Counter, Stove, Oven, ...).
+    /// GameplayManager talks to stations only through this interface, never through a
+    /// concrete type - that's what lets you add a new station without editing GameplayManager.
+    /// </summary>
+    public interface IStationController
+    {
+        KitchenStationType StationType { get; }
+ 
+        /// <summary>
+        /// Called when this station's panel becomes the visible/active one.
+        /// Should refresh all UI to reflect the given step.
+        /// </summary>
+        void Activate(CookingStep step);
+ 
+        /// <summary>
+        /// Called when this station's panel is hidden (player navigated to another station).
+        /// </summary>
+        void Deactivate();
+    }
+ 
+    /// <summary>
+    /// Extended contract for stations that track a manipulable heat value and an elapsed
+    /// cooking timer (Stove, Oven, and any future heat-based station).
+    /// </summary>
+    public interface IHeatStationController : IStationController
+    {
+        float CurrentHeat { get; }
+        float ElapsedCookingTime { get; }
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Gameplay/Stations/OvenController.cs">
+using UnityEngine;
+using MasakanTradisional.Data;
+ 
+namespace MasakanTradisional.Gameplay.Stations
+{
+    /// <summary>
+    /// Oven workstation: Bake steps. Reuses all heat/timer logic from
+    /// HeatStationControllerBase for free. Oven-specific extras (door animation,
+    /// preheat delay, etc.) can be added here without touching Stove or the base class.
+    /// </summary>
+    public class OvenController : HeatStationControllerBase
+    {
+        public override KitchenStationType StationType => KitchenStationType.Oven;
+ 
+        [Header("Oven Extras (optional)")]
+        [SerializeField] private Animator ovenDoorAnimator;
+ 
+        public override void Activate(CookingStep step)
+        {
+            base.Activate(step);
+            if (ovenDoorAnimator != null) ovenDoorAnimator.SetBool("IsOpen", true);
+        }
+ 
+        public override void Deactivate()
+        {
+            base.Deactivate();
+            if (ovenDoorAnimator != null) ovenDoorAnimator.SetBool("IsOpen", false);
+        }
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Gameplay/Stations/ShelvesController.cs">
+namespace MasakanTradisional.Gameplay.Stations
+{
+    /// <summary>
+    /// Shelves workstation: dry goods / spices, used mainly for Prepare/Grind steps.
+    /// </summary>
+    public class ShelvesController : IngredientDisplayStationBase
+    {
+        public override KitchenStationType StationType => KitchenStationType.Shelves;
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Gameplay/Stations/StationControllerBase.cs">
+using UnityEngine;
+using MasakanTradisional.Data;
+ 
+namespace MasakanTradisional.Gameplay.Stations
+{
+    /// <summary>
+    /// Base class for all workstation panel controllers. Handles panel visibility and
+    /// step caching; concrete stations override RefreshUI() to bind their own widgets.
+    /// </summary>
+    public abstract class StationControllerBase : MonoBehaviour, IStationController
+    {
+        [Header("Base Station Setup")]
+        [SerializeField] protected GameObject panelRoot;
+ 
+        protected CookingStep currentStep;
+ 
+        public abstract KitchenStationType StationType { get; }
+ 
+        public virtual void Activate(CookingStep step)
+        {
+            currentStep = step;
+            if (panelRoot != null) panelRoot.SetActive(true);
+            RefreshUI();
+        }
+ 
+        public virtual void Deactivate()
+        {
+            if (panelRoot != null) panelRoot.SetActive(false);
+        }
+ 
+        /// <summary>
+        /// Override to bind currentStep's data (ingredients, instructions, icons, etc.)
+        /// to this station's own UI widgets. Called every time Activate() runs.
+        /// </summary>
+        protected virtual void RefreshUI() { }
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Gameplay/Stations/StoveController.cs">
+namespace MasakanTradisional.Gameplay.Stations
+{
+    /// <summary>
+    /// Stove workstation: Saute / Boil / Simmer / Fry steps.
+    /// All behaviour is inherited from HeatStationControllerBase - this class only
+    /// identifies which station type it represents.
+    /// </summary>
+    public class StoveController : HeatStationControllerBase
+    {
+        public override KitchenStationType StationType => KitchenStationType.Stove;
     }
 }
 </file>
@@ -412,7 +796,6 @@ namespace MasakanTradisional.Gameplay.Evaluation
 </file>
 
 <file path="Assets/_Project/Scripts/Gameplay/GameplayManager.cs">
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -420,42 +803,39 @@ using TMPro;
 using MasakanTradisional.Data;
 using MasakanTradisional.Core.FSM;
 using MasakanTradisional.Gameplay.Evaluation;
+using MasakanTradisional.Gameplay.Stations;
 using MasakanTradisional.Core.Audio;
 using UnityEngine.SceneManagement;
-
+ 
 namespace MasakanTradisional.Gameplay
 {
-    public enum KitchenStationType
-    {
-        Shelves,
-        Fridge,
-        Counter,
-        Stove
-    }
-
     /// <summary>
-    /// Master controller for Gameplay.unity scene.
-    /// Manages workstation switching (Shelves, Fridge, Counter, Stove),
-    /// step execution workflow, Fuzzy Logic evaluation integration, and game UI updates.
+    /// Coordinator for Gameplay.unity. Owns recipe/step progression, fuzzy scoring,
+    /// and result presentation. Delegates all per-station UI/interaction to
+    /// IStationController implementations - this class never touches a slider,
+    /// a heat value, or a timer directly. Adding a new station = write a controller
+    /// + assign it in the inspector, no edits needed here beyond that assignment.
     /// </summary>
     public class GameplayManager : MonoBehaviour
     {
         [Header("Data & Fallback Settings")]
         [SerializeField] private RecipeData defaultFallbackRecipe;
         [SerializeField] private FuzzyCookingEvaluator fuzzyEvaluator;
-
-        [Header("Workstation Views / Panels")]
-        [SerializeField] private GameObject shelvesPanel;
-        [SerializeField] private GameObject fridgePanel;
-        [SerializeField] private GameObject counterPanel;
-        [SerializeField] private GameObject stovePanel;
-
+ 
+        [Header("Station Controllers")]
+        [SerializeField] private ShelvesController shelvesController;
+        [SerializeField] private FridgeController fridgeController;
+        [SerializeField] private CounterController counterController;
+        [SerializeField] private StoveController stoveController;
+        [SerializeField] private OvenController ovenController;
+ 
         [Header("Station Switcher Buttons")]
         [SerializeField] private Button navShelvesButton;
         [SerializeField] private Button navFridgeButton;
         [SerializeField] private Button navCounterButton;
         [SerializeField] private Button navStoveButton;
-
+        [SerializeField] private Button navOvenButton;
+ 
         [Header("Step Information UI")]
         [SerializeField] private TMP_Text recipeNameText;
         [SerializeField] private TMP_Text stepTitleText;
@@ -463,17 +843,11 @@ namespace MasakanTradisional.Gameplay
         [SerializeField] private TMP_Text stepProgressText;
         [SerializeField] private Image stepIllustrationImage;
         [SerializeField] private TMP_Text targetToolText;
-
-        [Header("Stove Controls & Cooking UI")]
-        [SerializeField] private Slider heatSlider;
-        [SerializeField] private TMP_Text currentHeatText;
-        [SerializeField] private TMP_Text targetHeatText;
-        [SerializeField] private TMP_Text cookingTimerText;
-        [SerializeField] private TMP_Text targetTimerText;
-        [SerializeField] private Button startCookingButton;
+ 
+        [Header("Step Completion")]
+        [Tooltip("Single persistent 'Finish Step' button, always available regardless of which station panel is currently displayed.")]
         [SerializeField] private Button finishStepButton;
-        [SerializeField] private TMP_Text startButtonText;
-
+ 
         [Header("Result / Evaluation Modal")]
         [SerializeField] private GameObject resultModal;
         [SerializeField] private TMP_Text resultScoreText;
@@ -484,37 +858,51 @@ namespace MasakanTradisional.Gameplay
         [SerializeField] private Sprite emptyStarSprite;
         [SerializeField] private Button retryButton;
         [SerializeField] private Button mainMenuButton;
-
+ 
         // Internal Gameplay Tracking
         private RecipeData activeRecipe;
         private int currentStepIndex = 0;
         private KitchenStationType currentStation = KitchenStationType.Counter;
-
-        private bool isCookingActive = false;
-        private float currentCookingTime = 0f;
-        private float currentHeatValue = 0f;
-
+        private Dictionary<KitchenStationType, IStationController> stationControllers;
+ 
         private List<FuzzyCookingEvaluator.EvaluationResult> stepResults = new List<FuzzyCookingEvaluator.EvaluationResult>();
-
+ 
+        private void Awake()
+        {
+            BuildStationRegistry();
+        }
+ 
         private void Start()
         {
             InitializeRecipeData();
             SetupButtonListeners();
             StartRecipeSession();
         }
-
-        private void Update()
+ 
+        /// <summary>
+        /// Registers every assigned station controller by its StationType.
+        /// Leaving a slot unassigned (e.g. while incrementally building the scene)
+        /// simply means that station is skipped, not a null-ref crash.
+        /// </summary>
+        private void BuildStationRegistry()
         {
-            if (isCookingActive)
-            {
-                currentCookingTime += Time.deltaTime;
-                UpdateCookingTimerUI();
-            }
+            stationControllers = new Dictionary<KitchenStationType, IStationController>();
+ 
+            RegisterStation(shelvesController);
+            RegisterStation(fridgeController);
+            RegisterStation(counterController);
+            RegisterStation(stoveController);
+            RegisterStation(ovenController);
         }
-
+ 
+        private void RegisterStation(IStationController controller)
+        {
+            if (controller == null) return;
+            stationControllers[controller.StationType] = controller;
+        }
+ 
         private void InitializeRecipeData()
         {
-            // Acquire selected recipe from GameStateMachine or use fallback for scene testing
             if (GameStateMachine.Instance != null && GameStateMachine.Instance.CurrentSelectedRecipe != null)
             {
                 activeRecipe = GameStateMachine.Instance.CurrentSelectedRecipe;
@@ -522,112 +910,96 @@ namespace MasakanTradisional.Gameplay
             else
             {
                 activeRecipe = defaultFallbackRecipe;
-                Debug.LogWarning("[GameplayController] No recipe selected from Main Menu. Using defaultFallbackRecipe for scene testing.");
+                Debug.LogWarning("[GameplayManager] No recipe selected from Main Menu. Using defaultFallbackRecipe for scene testing.");
             }
-
+ 
             if (fuzzyEvaluator == null)
             {
                 fuzzyEvaluator = GetComponent<FuzzyCookingEvaluator>();
-                if (fuzzyEvaluator == null)
-                {
-                    fuzzyEvaluator = gameObject.AddComponent<FuzzyCookingEvaluator>();
-                }
+                if (fuzzyEvaluator == null) fuzzyEvaluator = gameObject.AddComponent<FuzzyCookingEvaluator>();
             }
         }
-
+ 
         private void SetupButtonListeners()
         {
-            // Station Switching Navigation
             if (navShelvesButton != null) navShelvesButton.onClick.AddListener(() => SwitchStation(KitchenStationType.Shelves));
             if (navFridgeButton != null) navFridgeButton.onClick.AddListener(() => SwitchStation(KitchenStationType.Fridge));
             if (navCounterButton != null) navCounterButton.onClick.AddListener(() => SwitchStation(KitchenStationType.Counter));
             if (navStoveButton != null) navStoveButton.onClick.AddListener(() => SwitchStation(KitchenStationType.Stove));
-
-            // Stove Controls
-            if (heatSlider != null) heatSlider.onValueChanged.AddListener(OnHeatSliderChanged);
-            if (startCookingButton != null) startCookingButton.onClick.AddListener(ToggleCookingTimer);
+            if (navOvenButton != null) navOvenButton.onClick.AddListener(() => SwitchStation(KitchenStationType.Oven));
+ 
             if (finishStepButton != null) finishStepButton.onClick.AddListener(CompleteCurrentStep);
-
-            // Result Modal Buttons
+ 
             if (retryButton != null) retryButton.onClick.AddListener(RestartCookingSession);
             if (mainMenuButton != null) mainMenuButton.onClick.AddListener(ReturnToMainMenu);
         }
-
+ 
         public void StartRecipeSession()
         {
             if (activeRecipe == null)
             {
-                Debug.LogError("[GameplayController] Cannot start session! Active Recipe is null.");
+                Debug.LogError("[GameplayManager] Cannot start session! Active Recipe is null.");
                 return;
             }
-
+ 
             currentStepIndex = 0;
             stepResults.Clear();
-
+ 
             if (resultModal != null) resultModal.SetActive(false);
             if (recipeNameText != null) recipeNameText.text = activeRecipe.recipeName;
-
+ 
             LoadStep(currentStepIndex);
         }
-
+ 
         private void LoadStep(int index)
         {
             if (activeRecipe == null || index < 0 || index >= activeRecipe.StepCount) return;
-
+ 
             CookingStep step = activeRecipe.GetStep(index);
-
-            // Update State Machine
-            if (GameStateMachine.Instance != null)
+ 
+            if (GameStateMachine.Instance != null && IsHeatBasedAction(step.actionType))
             {
-                if (IsStoveAction(step.actionType))
-                {
-                    GameStateMachine.Instance.GoToCooking();
-                }
+                GameStateMachine.Instance.GoToCooking();
             }
-
-            // Update UI Details
+ 
             if (stepTitleText != null) stepTitleText.text = step.stepTitle;
             if (stepInstructionText != null) stepInstructionText.text = step.instruction;
             if (stepProgressText != null) stepProgressText.text = $"Step {index + 1} / {activeRecipe.StepCount}";
             if (stepIllustrationImage != null) stepIllustrationImage.sprite = step.stepIllustration;
             if (targetToolText != null) targetToolText.text = $"Required Tool: {(string.IsNullOrEmpty(step.requiredTool.toolName) ? "None" : step.requiredTool.toolName)}";
-
-            // Configure Target Parameters
-            if (targetHeatText != null) targetHeatText.text = $"Target Heat: {step.targetTemperature:F0}°C";
-            if (targetTimerText != null) targetTimerText.text = $"Target Time: {step.timeLimitSeconds:F0}s";
-
-            // Reset Heat Slider
-            if (heatSlider != null)
-            {
-                heatSlider.minValue = 0f;
-                heatSlider.maxValue = Mathf.Max(200f, step.targetTemperature * 1.5f);
-                heatSlider.value = step.targetTemperature > 0f ? step.targetTemperature * 0.8f : 0f;
-                currentHeatValue = heatSlider.value;
-            }
-
-            // Reset Timer State
-            isCookingActive = false;
-            currentCookingTime = 0f;
-            UpdateCookingTimerUI();
-
-            if (startButtonText != null) startButtonText.text = "Start Cooking";
-
-            // Auto-navigate to recommended station for this step type
-            KitchenStationType station = RecommendStationForStep(step.actionType);
-            SwitchStation(station);
+ 
+            // Auto-navigate to the recommended station for this step type
+            SwitchStation(RecommendStationForStep(step.actionType));
         }
-
+ 
+        /// <summary>
+        /// Activates the target station's controller and deactivates every other
+        /// registered station. Nav buttons call this for free browsing; LoadStep
+        /// calls it to auto-navigate to a step's home station.
+        /// </summary>
         public void SwitchStation(KitchenStationType targetStation)
         {
             AudioManager.Instance?.PlayButtonSFX();
+ 
+            CookingStep step = (activeRecipe != null && currentStepIndex < activeRecipe.StepCount)
+                ? activeRecipe.GetStep(currentStepIndex)
+                : null;
+ 
+            foreach (var kvp in stationControllers)
+            {
+                if (kvp.Key == targetStation)
+                {
+                    kvp.Value.Activate(step);
+                }
+                else
+                {
+                    kvp.Value.Deactivate();
+                }
+            }
+ 
             currentStation = targetStation;
-
-            if (shelvesPanel != null) shelvesPanel.SetActive(targetStation == KitchenStationType.Shelves);
-            if (fridgePanel != null) fridgePanel.SetActive(targetStation == KitchenStationType.Fridge);
-            if (counterPanel != null) counterPanel.SetActive(targetStation == KitchenStationType.Counter);
-            if (stovePanel != null) stovePanel.SetActive(targetStation == KitchenStationType.Stove);
         }
-
+ 
         private KitchenStationType RecommendStationForStep(StepActionType actionType)
         {
             switch (actionType)
@@ -644,81 +1016,56 @@ namespace MasakanTradisional.Gameplay
                 case StepActionType.Simmer:
                 case StepActionType.Fry:
                     return KitchenStationType.Stove;
+                case StepActionType.Bake:
+                    return KitchenStationType.Oven;
                 default:
                     return KitchenStationType.Counter;
             }
         }
-
-        private bool IsStoveAction(StepActionType actionType)
+ 
+        private bool IsHeatBasedAction(StepActionType actionType)
         {
             return actionType == StepActionType.Saute ||
                    actionType == StepActionType.Boil ||
                    actionType == StepActionType.Simmer ||
-                   actionType == StepActionType.Fry;
+                   actionType == StepActionType.Fry ||
+                   actionType == StepActionType.Bake;
         }
-
-        private void OnHeatSliderChanged(float value)
-        {
-            currentHeatValue = value;
-            if (currentHeatText != null)
-            {
-                currentHeatText.text = $"Heat: {currentHeatValue:F0}°C";
-            }
-        }
-
-        private void ToggleCookingTimer()
-        {
-            AudioManager.Instance?.PlayButtonSFX();
-            isCookingActive = !isCookingActive;
-
-            if (startButtonText != null)
-            {
-                startButtonText.text = isCookingActive ? "Pause Cooking" : "Resume Cooking";
-            }
-        }
-
-        private void UpdateCookingTimerUI()
-        {
-            if (cookingTimerText != null)
-            {
-                cookingTimerText.text = $"Time: {currentCookingTime:F1}s";
-            }
-        }
-
+ 
         public void CompleteCurrentStep()
         {
             AudioManager.Instance?.PlayButtonSFX();
-            isCookingActive = false;
-
+ 
             CookingStep step = activeRecipe.GetStep(currentStepIndex);
+            KitchenStationType homeStation = RecommendStationForStep(step.actionType);
             FuzzyCookingEvaluator.EvaluationResult evalResult;
-
-            // Resolve Fuzzy Data profile (Step override takes priority over Recipe default)
+ 
             FuzzyCookingData activeFuzzyData = step.fuzzyData != null ? step.fuzzyData : activeRecipe.DefaultFuzzyData;
-
-            // Perform Fuzzy Evaluation with active config profile
-            if (step.targetTemperature > 0f && step.timeLimitSeconds > 0f)
+ 
+            if (stationControllers.TryGetValue(homeStation, out IStationController controller) &&
+                controller is IHeatStationController heatController &&
+                step.targetTemperature > 0f && step.timeLimitSeconds > 0f)
             {
                 evalResult = fuzzyEvaluator.EvaluateCooking(
-                    currentHeatValue,
+                    heatController.CurrentHeat,
                     step.targetTemperature,
-                    currentCookingTime,
+                    heatController.ElapsedCookingTime,
                     step.timeLimitSeconds,
                     activeFuzzyData
                 );
             }
             else
             {
-                // Fallback ratio for non-stove prep steps
-                float timeRatio = step.timeLimitSeconds > 0f ? (currentCookingTime > 0f ? currentCookingTime / step.timeLimitSeconds : 1.0f) : 1.0f;
-                evalResult = fuzzyEvaluator.EvaluateRatios(1.0f, timeRatio, activeFuzzyData);
+                // Non-heat steps (Prepare/Chop/Mix/PlateAndGarnish) auto-resolve to a
+                // perfect ratio - there's no slider/timer to score them against.
+                evalResult = fuzzyEvaluator.EvaluateRatios(1.0f, 1.0f, activeFuzzyData);
             }
-
+ 
             stepResults.Add(evalResult);
             Debug.Log($"[GameplayManager] Step {currentStepIndex + 1} Score: {evalResult.FinalScore:F1} | Status: {evalResult.StatusLabel} | Grade: {evalResult.LetterGrade}");
-
+ 
             currentStepIndex++;
-
+ 
             if (currentStepIndex < activeRecipe.StepCount)
             {
                 LoadStep(currentStepIndex);
@@ -728,25 +1075,20 @@ namespace MasakanTradisional.Gameplay
                 ShowFinalResults();
             }
         }
-
+ 
         private void ShowFinalResults()
         {
             if (stepResults.Count == 0) return;
-
+ 
             float totalScore = 0f;
-            foreach (var res in stepResults)
-            {
-                totalScore += res.FinalScore;
-            }
+            foreach (var res in stepResults) totalScore += res.FinalScore;
             float averageScore = totalScore / stepResults.Count;
-
-            // Earn Stars (Matches RecipeSelectUI.cs check)
+ 
             int earnedStars = 0;
             if (averageScore >= 90f) earnedStars = 3;
             else if (averageScore >= 70f) earnedStars = 2;
             else if (averageScore >= 50f) earnedStars = 1;
-
-            // Save High Score & Stars into PlayerPrefs
+ 
             if (activeRecipe != null && !string.IsNullOrEmpty(activeRecipe.recipeId))
             {
                 string starKey = $"Recipe_Stars_{activeRecipe.recipeId}";
@@ -757,12 +1099,11 @@ namespace MasakanTradisional.Gameplay
                     PlayerPrefs.Save();
                 }
             }
-
-            // Bind UI Modal
+ 
             if (resultScoreText != null) resultScoreText.text = $"Final Score: {averageScore:F1} / 100";
             if (resultGradeText != null) resultGradeText.text = DetermineLetterGrade(averageScore);
             if (resultStatusLabelText != null) resultStatusLabelText.text = GetOverallStatusSummary(averageScore);
-
+ 
             for (int i = 0; i < resultStars.Length; i++)
             {
                 if (resultStars[i] != null)
@@ -770,10 +1111,10 @@ namespace MasakanTradisional.Gameplay
                     resultStars[i].sprite = (i < earnedStars) ? filledStarSprite : emptyStarSprite;
                 }
             }
-
+ 
             if (resultModal != null) resultModal.SetActive(true);
         }
-
+ 
         private string DetermineLetterGrade(float score)
         {
             if (score >= 90f) return "A+";
@@ -783,7 +1124,7 @@ namespace MasakanTradisional.Gameplay
             if (score >= 40f) return "D";
             return "F";
         }
-
+ 
         private string GetOverallStatusSummary(float score)
         {
             if (score >= 90f) return "Sempurna! Quality Masterpiece!";
@@ -791,20 +1132,17 @@ namespace MasakanTradisional.Gameplay
             if (score >= 60f) return "Cukup Baik, Perlu Sedikit Latihan.";
             return "Masakan Kurang Pas / Gosong. Coba Lagi!";
         }
-
+ 
         public void RestartCookingSession()
         {
             AudioManager.Instance?.PlayButtonSFX();
             StartRecipeSession();
         }
-
+ 
         public void ReturnToMainMenu()
         {
             AudioManager.Instance?.PlayButtonSFX();
-            if (GameStateMachine.Instance != null)
-            {
-                GameStateMachine.Instance.GoToRecipeSelection();
-            }
+            if (GameStateMachine.Instance != null) GameStateMachine.Instance.GoToRecipeSelection();
             SceneManager.LoadScene("MainMenu");
         }
     }
@@ -1058,206 +1396,17 @@ namespace MasakanTradisional.Core.FSM
 }
 </file>
 
-<file path="Assets/_Project/Audio/AudioManager.cs">
-using UnityEngine;
-
-namespace MasakanTradisional.Core.Audio
+<file path="Assets/_Project/Scripts/Gameplay/KitchenStationType.cs">
+// Moved out of GameplayManager.cs so it's not buried in the coordinator file.
+namespace MasakanTradisional.Gameplay
 {
-    public class AudioManager : MonoBehaviour
+    public enum KitchenStationType
     {
-        public static AudioManager Instance { get; private set; }
-
-        [Header("Audio Sources")]
-        [SerializeField] private AudioSource bgmSource;
-        [SerializeField] private AudioSource sfxSource;
-
-        [Header("Clips")]
-        [SerializeField] private AudioClip menuBGM;
-        [SerializeField] private AudioClip buttonClickSFX;
-
-        private void Awake()
-        {
-            if (Instance == null)
-            {
-                Instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
-        }
-
-        private void Start()
-        {
-            PlayBGM(menuBGM);
-        }
-
-        public void PlayBGM(AudioClip clip)
-        {
-            if (clip == null || bgmSource.clip == clip) return;
-            bgmSource.clip = clip;
-            bgmSource.loop = true;
-            bgmSource.Play();
-        }
-
-        public void PlayButtonSFX()
-        {
-            if (buttonClickSFX != null && sfxSource != null)
-            {
-                sfxSource.PlayOneShot(buttonClickSFX);
-            }
-        }
-    }
-}
-</file>
-
-<file path="Assets/_Project/Scripts/Data/RecipeData.cs">
-using System;
-using System.Collections.Generic;
-using UnityEngine;
-
-namespace MasakanTradisional.Data
-{
-    public enum RecipeDifficulty
-    {
-        Easy,
-        Medium,
-        Hard,
-        Expert
-    }
-
-    public enum StepActionType
-    {
-        Prepare,
-        Chop,
-        Grind,
-        Mix,
-        Saute,
-        Boil,
-        Simmer,
-        Fry,
-        PlateAndGarnish
-    }
-
-    [Serializable]
-    public struct IngredientData
-    {
-        public string ingredientId;
-        public string ingredientName;
-        public Sprite icon;
-        public float amount;
-        public string unit; // e.g., "g", "ml", "tbsp", "pcs"
-        public bool isOptional;
-    }
-
-    [Serializable]
-    public struct ToolData
-    {
-        public string toolId;
-        public string toolName;
-        public Sprite icon;
-        public string toolType; // e.g., "Mortar & Pestle", "Wok", "Knife"
-    }
-
-    [Serializable]
-    public class CookingStep
-    {
-        [Header("Step Overview")]
-        public string stepId;
-        public string stepTitle;
-        [TextArea(2, 4)]
-        public string instruction;
-        public StepActionType actionType;
-
-        [Header("Requirements")]
-        public ToolData requiredTool;
-        public List<IngredientData> requiredIngredients = new List<IngredientData>();
-
-        [Header("Execution Parameters")]
-        public float timeLimitSeconds = 30f;
-        public float targetTemperature; // Applicable for cooking steps
-        public Sprite stepIllustration;
-        public AudioClip stepSFX;
-
-        [Header("Fuzzy Logic Overrides (Optional)")]
-        [Tooltip("Optional step-specific Fuzzy Logic override asset. Overrides recipe default if assigned.")]
-        public MasakanTradisional.Gameplay.Evaluation.FuzzyCookingData fuzzyData;
-
-        [Header("Scoring Calibration")]
-        [Range(0.5f, 2.0f)]
-        public float scoreMultiplier = 1.0f;
-    }
-
-    [CreateAssetMenu(fileName = "NewRecipeData", menuName = "Masakan Tradisional/Data/Recipe Data")]
-    public class RecipeData : ScriptableObject
-    {
-        [Header("Basic Information")]
-        public string recipeId;               // e.g., "recipe_rendang"
-        public string recipeName;             // e.g., "Rendang Padang"
-        public string originRegion;           // e.g., "Padang, West Sumatra"
-        [TextArea(3, 5)] 
-        public string description;            // Cultural & culinary history
-
-        [Header("Gameplay Configuration")]
-        public RecipeDifficulty difficulty = RecipeDifficulty.Medium;
-        public string gameplaySceneName = "Gameplay";      // e.g., "Cooking_Rendang"
-        public Sprite recipeIcon;             // Thumbnail icon for UI card
-        public Sprite dishBannerImage;        // High-res preview image
-
-        [Header("Fuzzy Logic Configuration")]
-        [Tooltip("Recipe-wide Fuzzy Logic configuration asset.")]
-        [SerializeField] private MasakanTradisional.Gameplay.Evaluation.FuzzyCookingData defaultFuzzyData;
-
-        [Header("Unlock Requirements")]
-        public int starsRequiredToUnlock = 0; // Cumulative stars needed
-        public RecipeData prerequisiteRecipe; // Optional: recipe required prior to this
-
-        [Header("Cooking Specifications")]
-        [SerializeField] private List<IngredientData> ingredients = new List<IngredientData>();
-        [SerializeField] private List<ToolData> requiredTools = new List<ToolData>();
-        [SerializeField] private List<CookingStep> stepSequence = new List<CookingStep>();
-
-        // Public Accessors
-        public MasakanTradisional.Gameplay.Evaluation.FuzzyCookingData DefaultFuzzyData => defaultFuzzyData;
-        public IReadOnlyList<IngredientData> Ingredients => ingredients;
-        public IReadOnlyList<ToolData> RequiredTools => requiredTools;
-        public IReadOnlyList<CookingStep> StepSequence => stepSequence;
-
-        public int StepCount => stepSequence.Count;
-
-        public CookingStep GetStep(int index)
-        {
-            if (index >= 0 && index < stepSequence.Count)
-            {
-                return stepSequence[index];
-            }
-            Debug.LogWarning($"[RecipeData] Invalid step index {index} requested for recipe '{recipeName}'.");
-            return null;
-        }
-    }
-}
-</file>
-
-<file path="Assets/_Project/Scripts/Data/RecipeDatabase.cs">
-using System.Collections.Generic;
-using UnityEngine;
-
-namespace MasakanTradisional.Data
-{
-    [CreateAssetMenu(fileName = "RecipeDatabase", menuName = "Masakan Tradisional/Data/Recipe Database")]
-    public class RecipeDatabase : ScriptableObject
-    {
-        [SerializeField] private List<RecipeData> recipes = new List<RecipeData>();
-
-        public IReadOnlyList<RecipeData> Recipes => recipes;
-
-        public RecipeData GetRecipeById(string id)
-        {
-            return recipes.Find(r => r != null && r.recipeId == id);
-        }
-
-        public int TotalRecipeCount => recipes.Count;
+        Shelves,
+        Fridge,
+        Counter,
+        Stove,
+        Oven
     }
 }
 </file>
@@ -1431,188 +1580,6 @@ namespace MasakanTradisional.UI.MainMenu
             #else
                 Application.Quit();
             #endif
-        }
-    }
-}
-</file>
-
-<file path="Assets/_Project/Scripts/Main Menu/RecipeCardUI.cs">
-using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
-using MasakanTradisional.Data;
-
-namespace MasakanTradisional.UI.MainMenu
-{
-    public class RecipeCardUI : MonoBehaviour
-    {
-        [Header("UI Elements")]
-        [SerializeField] private TMP_Text recipeTitleText;
-        [SerializeField] private TMP_Text regionText;
-        [SerializeField] private Image recipeImage;
-        [SerializeField] private Image[] starImages;
-        [SerializeField] private Sprite filledStarSprite;
-        [SerializeField] private Sprite emptyStarSprite;
-
-        [Header("Extended Recipe Details")]
-        [SerializeField] private TMP_Text difficultyText;
-        [SerializeField] private TMP_Text stepCountText;
-        [SerializeField] private TMP_Text ingredientCountText;
-        [SerializeField] private TMP_Text descriptionText;
-
-        [Header("Lock / Unlock UI")]
-        [SerializeField] private GameObject lockOverlay;
-        [SerializeField] private TMP_Text lockRequirementText;
-        [SerializeField] private Button selectButton;
-
-        public void SetupCard(RecipeData recipeData, int earnedStars, bool isUnlocked, System.Action<string> onRecipeSelected)
-        {
-            if (recipeTitleText != null) recipeTitleText.text = recipeData.recipeName;
-            if (regionText != null) regionText.text = recipeData.originRegion;
-            if (recipeImage != null) recipeImage.sprite = recipeData.recipeIcon;
-
-            // Render extended details
-            if (difficultyText != null) difficultyText.text = recipeData.difficulty.ToString();
-            if (stepCountText != null) stepCountText.text = $"{recipeData.StepCount} Steps";
-            if (ingredientCountText != null) ingredientCountText.text = $"{recipeData.Ingredients.Count} Ingredients";
-            if (descriptionText != null) descriptionText.text = recipeData.description;
-
-            // Render Stars Rating
-            for (int i = 0; i < starImages.Length; i++)
-            {
-                if (starImages[i] != null)
-                {
-                    starImages[i].sprite = (i < earnedStars) ? filledStarSprite : emptyStarSprite;
-                }
-            }
-
-            // Handle Lock Overlay
-            if (lockOverlay != null) lockOverlay.SetActive(!isUnlocked);
-            if (lockRequirementText != null && !isUnlocked)
-            {
-                lockRequirementText.text = $"Requires {recipeData.starsRequiredToUnlock} ★";
-            }
-
-            // Select Button Configuration
-            if (selectButton != null)
-            {
-                selectButton.interactable = isUnlocked;
-                selectButton.onClick.RemoveAllListeners();
-                selectButton.onClick.AddListener(() => {
-                    onRecipeSelected?.Invoke(recipeData.gameplaySceneName);
-                    // Notify state machine directly of recipe selection
-                    if (MasakanTradisional.Core.FSM.GameStateMachine.Instance != null)
-                    {
-                        MasakanTradisional.Core.FSM.GameStateMachine.Instance.SelectRecipe(recipeData);
-                    }
-                });
-            }
-        }
-    }
-}
-</file>
-
-<file path="Assets/_Project/Scripts/Main Menu/RecipeSelectUI.cs">
-using UnityEngine;
-using MasakanTradisional.Data;
-
-namespace MasakanTradisional.UI.MainMenu
-{
-    public class RecipeSelectUI : MonoBehaviour
-    {
-        [Header("Data References")]
-        [SerializeField] private RecipeDatabase recipeDatabase;
-        [SerializeField] private GameObject recipeCardPrefab;
-        [SerializeField] private Transform cardContainerParent;
-
-        [Header("Main Manager")]
-        [SerializeField] private MainMenuManager mainMenuManager;
-
-        private void OnEnable()
-        {
-            PopulateRecipeGrid();
-        }
-
-        public void PopulateRecipeGrid()
-        {
-            if (cardContainerParent == null) return;
-
-            // Clear existing UI cards
-            foreach (Transform child in cardContainerParent)
-            {
-                Destroy(child.gameObject);
-            }
-
-            if (recipeDatabase == null || recipeDatabase.Recipes == null)
-            {
-                Debug.LogWarning("[RecipeSelectUI] RecipeDatabase is null or empty!");
-                return;
-            }
-
-            var recipes = recipeDatabase.Recipes;
-            int totalStarsEarned = CalculateTotalStarsEarned();
-
-            for (int i = 0; i < recipes.Count; i++)
-            {
-                RecipeData recipe = recipes[i];
-                if (recipe == null) continue;
-
-                GameObject cardObj = Instantiate(recipeCardPrefab, cardContainerParent);
-                RecipeCardUI cardUI = cardObj.GetComponent<RecipeCardUI>();
-
-                // Get stars scored for this specific recipe
-                int stars = PlayerPrefs.GetInt($"Recipe_Stars_{recipe.recipeId}", 0);
-
-                // Check unlock requirements (cumulative stars & prerequisite recipe)
-                bool isUnlocked = CheckIsUnlocked(recipe, totalStarsEarned);
-
-                if (cardUI != null)
-                {
-                    cardUI.SetupCard(recipe, stars, isUnlocked, OnRecipeSelected);
-                }
-            }
-        }
-
-        private bool CheckIsUnlocked(RecipeData recipe, int totalStarsEarned)
-        {
-            // Cumulative star check
-            if (totalStarsEarned < recipe.starsRequiredToUnlock)
-                return false;
-
-            // Prerequisite recipe check
-            if (recipe.prerequisiteRecipe != null)
-            {
-                int prereqStars = PlayerPrefs.GetInt($"Recipe_Stars_{recipe.prerequisiteRecipe.recipeId}", 0);
-                if (prereqStars <= 0) return false;
-            }
-
-            return true;
-        }
-
-        private int CalculateTotalStarsEarned()
-        {
-            int total = 0;
-            if (recipeDatabase != null && recipeDatabase.Recipes != null)
-            {
-                foreach (var recipe in recipeDatabase.Recipes)
-                {
-                    if (recipe != null)
-                    {
-                        total += PlayerPrefs.GetInt($"Recipe_Stars_{recipe.recipeId}", 0);
-                    }
-                }
-            }
-            return total;
-        }
-
-        private void OnRecipeSelected(string sceneName)
-        {
-            if (mainMenuManager != null)
-            {
-                // Enforce single-scene architecture: Always load "Gameplay" scene.
-                // The selected recipe object is already passed to GameStateMachine.Instance.
-                mainMenuManager.LoadGameplayScene("Gameplay");
-            }
         }
     }
 }
@@ -10496,6 +10463,316 @@ public class Readme : ScriptableObject
     public class Section
     {
         public string heading, text, linkText, url;
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Data/RecipeData.cs">
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace MasakanTradisional.Data
+{
+    public enum RecipeDifficulty
+    {
+        Easy,
+        Medium,
+        Hard,
+        Expert
+    }
+
+    public enum StepActionType
+    {
+        Prepare,
+        Chop,
+        Grind,
+        Mix,
+        Saute,
+        Boil,
+        Simmer,
+        Fry,
+        Bake,
+        PlateAndGarnish
+    }
+
+    [Serializable]
+    public struct IngredientData
+    {
+        public string ingredientId;
+        public string ingredientName;
+        public Sprite icon;
+        public float amount;
+        public string unit; // e.g., "g", "ml", "tbsp", "pcs"
+        public bool isOptional;
+    }
+
+    [Serializable]
+    public struct ToolData
+    {
+        public string toolId;
+        public string toolName;
+        public Sprite icon;
+        public string toolType; // e.g., "Mortar & Pestle", "Wok", "Knife"
+    }
+
+    [Serializable]
+    public class CookingStep
+    {
+        [Header("Step Overview")]
+        public string stepId;
+        public string stepTitle;
+        [TextArea(2, 4)]
+        public string instruction;
+        public StepActionType actionType;
+
+        [Header("Requirements")]
+        public ToolData requiredTool;
+        public List<IngredientData> requiredIngredients = new List<IngredientData>();
+
+        [Header("Execution Parameters")]
+        public float timeLimitSeconds = 30f;
+        public float targetTemperature; // Applicable for cooking steps
+        public Sprite stepIllustration;
+        public AudioClip stepSFX;
+
+        [Header("Fuzzy Logic Overrides (Optional)")]
+        [Tooltip("Optional step-specific Fuzzy Logic override asset. Overrides recipe default if assigned.")]
+        public MasakanTradisional.Gameplay.Evaluation.FuzzyCookingData fuzzyData;
+
+        [Header("Scoring Calibration")]
+        [Range(0.5f, 2.0f)]
+        public float scoreMultiplier = 1.0f;
+    }
+
+    [CreateAssetMenu(fileName = "NewRecipeData", menuName = "Masakan Tradisional/Data/Recipe Data")]
+    public class RecipeData : ScriptableObject
+    {
+        [Header("Basic Information")]
+        public string recipeId;               // e.g., "recipe_rendang"
+        public string recipeName;             // e.g., "Rendang Padang"
+        public string originRegion;           // e.g., "Padang, West Sumatra"
+        [TextArea(3, 5)] 
+        public string description;            // Cultural & culinary history
+
+        [Header("Gameplay Configuration")]
+        public RecipeDifficulty difficulty = RecipeDifficulty.Medium;
+        public string gameplaySceneName = "Gameplay";      // e.g., "Cooking_Rendang"
+        public Sprite recipeIcon;             // Thumbnail icon for UI card
+        public Sprite dishBannerImage;        // High-res preview image
+
+        [Header("Fuzzy Logic Configuration")]
+        [Tooltip("Recipe-wide Fuzzy Logic configuration asset.")]
+        [SerializeField] private MasakanTradisional.Gameplay.Evaluation.FuzzyCookingData defaultFuzzyData;
+
+        [Header("Unlock Requirements")]
+        public int starsRequiredToUnlock = 0; // Cumulative stars needed
+        public RecipeData prerequisiteRecipe; // Optional: recipe required prior to this
+
+        [Header("Cooking Specifications")]
+        [SerializeField] private List<IngredientData> ingredients = new List<IngredientData>();
+        [SerializeField] private List<ToolData> requiredTools = new List<ToolData>();
+        [SerializeField] private List<CookingStep> stepSequence = new List<CookingStep>();
+
+        // Public Accessors
+        public MasakanTradisional.Gameplay.Evaluation.FuzzyCookingData DefaultFuzzyData => defaultFuzzyData;
+        public IReadOnlyList<IngredientData> Ingredients => ingredients;
+        public IReadOnlyList<ToolData> RequiredTools => requiredTools;
+        public IReadOnlyList<CookingStep> StepSequence => stepSequence;
+
+        public int StepCount => stepSequence.Count;
+
+        public CookingStep GetStep(int index)
+        {
+            if (index >= 0 && index < stepSequence.Count)
+            {
+                return stepSequence[index];
+            }
+            Debug.LogWarning($"[RecipeData] Invalid step index {index} requested for recipe '{recipeName}'.");
+            return null;
+        }
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Main Menu/RecipeCardUI.cs">
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using MasakanTradisional.Data;
+
+namespace MasakanTradisional.UI.MainMenu
+{
+    public class RecipeCardUI : MonoBehaviour
+    {
+        [Header("UI Elements")]
+        [SerializeField] private TMP_Text recipeTitleText;
+        [SerializeField] private TMP_Text regionText;
+        [SerializeField] private Image recipeImage;
+        [SerializeField] private Image[] starImages;
+        [SerializeField] private Sprite filledStarSprite;
+        [SerializeField] private Sprite emptyStarSprite;
+
+        [Header("Extended Recipe Details")]
+        [SerializeField] private TMP_Text difficultyText;
+        [SerializeField] private TMP_Text stepCountText;
+        [SerializeField] private TMP_Text ingredientCountText;
+        [SerializeField] private TMP_Text descriptionText;
+
+        [Header("Lock / Unlock UI")]
+        [SerializeField] private GameObject lockOverlay;
+        [SerializeField] private TMP_Text lockRequirementText;
+        [SerializeField] private Button selectButton;
+
+        public void SetupCard(RecipeData recipeData, int earnedStars, bool isUnlocked, System.Action<string> onRecipeSelected)
+        {
+            if (recipeTitleText != null) recipeTitleText.text = recipeData.recipeName;
+            if (regionText != null) regionText.text = recipeData.originRegion;
+            if (recipeImage != null) recipeImage.sprite = recipeData.recipeIcon;
+
+            // Render extended details
+            if (difficultyText != null) difficultyText.text = recipeData.difficulty.ToString();
+            if (stepCountText != null) stepCountText.text = $"{recipeData.StepCount} Steps";
+            if (ingredientCountText != null) ingredientCountText.text = $"{recipeData.Ingredients.Count} Ingredients";
+            if (descriptionText != null) descriptionText.text = recipeData.description;
+
+            // Render Stars Rating
+            for (int i = 0; i < starImages.Length; i++)
+            {
+                if (starImages[i] != null)
+                {
+                    starImages[i].sprite = (i < earnedStars) ? filledStarSprite : emptyStarSprite;
+                }
+            }
+
+            // Handle Lock Overlay
+            if (lockOverlay != null) lockOverlay.SetActive(!isUnlocked);
+            if (lockRequirementText != null && !isUnlocked)
+            {
+                lockRequirementText.text = $"Requires {recipeData.starsRequiredToUnlock} ★";
+            }
+
+            // Select Button Configuration
+            if (selectButton != null)
+            {
+                selectButton.interactable = isUnlocked;
+                selectButton.onClick.RemoveAllListeners();
+                selectButton.onClick.AddListener(() => {
+                    onRecipeSelected?.Invoke(recipeData.gameplaySceneName);
+                    // Notify state machine directly of recipe selection
+                    if (MasakanTradisional.Core.FSM.GameStateMachine.Instance != null)
+                    {
+                        MasakanTradisional.Core.FSM.GameStateMachine.Instance.SelectRecipe(recipeData);
+                    }
+                });
+            }
+        }
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Main Menu/RecipeSelectUI.cs">
+using UnityEngine;
+using MasakanTradisional.Data;
+
+namespace MasakanTradisional.UI.MainMenu
+{
+    public class RecipeSelectUI : MonoBehaviour
+    {
+        [Header("Data References")]
+        [SerializeField] private RecipeDatabase recipeDatabase;
+        [SerializeField] private GameObject recipeCardPrefab;
+        [SerializeField] private Transform cardContainerParent;
+
+        [Header("Main Manager")]
+        [SerializeField] private MainMenuManager mainMenuManager;
+
+        private void OnEnable()
+        {
+            PopulateRecipeGrid();
+        }
+
+        public void PopulateRecipeGrid()
+        {
+            if (cardContainerParent == null) return;
+
+            // Clear existing UI cards
+            foreach (Transform child in cardContainerParent)
+            {
+                Destroy(child.gameObject);
+            }
+
+            if (recipeDatabase == null || recipeDatabase.Recipes == null)
+            {
+                Debug.LogWarning("[RecipeSelectUI] RecipeDatabase is null or empty!");
+                return;
+            }
+
+            var recipes = recipeDatabase.Recipes;
+            int totalStarsEarned = CalculateTotalStarsEarned();
+
+            for (int i = 0; i < recipes.Count; i++)
+            {
+                RecipeData recipe = recipes[i];
+                if (recipe == null) continue;
+
+                GameObject cardObj = Instantiate(recipeCardPrefab, cardContainerParent);
+                RecipeCardUI cardUI = cardObj.GetComponent<RecipeCardUI>();
+
+                // Get stars scored for this specific recipe
+                int stars = PlayerPrefs.GetInt($"Recipe_Stars_{recipe.recipeId}", 0);
+
+                // Check unlock requirements (cumulative stars & prerequisite recipe)
+                bool isUnlocked = CheckIsUnlocked(recipe, totalStarsEarned);
+
+                if (cardUI != null)
+                {
+                    cardUI.SetupCard(recipe, stars, isUnlocked, OnRecipeSelected);
+                }
+            }
+        }
+
+        private bool CheckIsUnlocked(RecipeData recipe, int totalStarsEarned)
+        {
+            // Cumulative star check
+            if (totalStarsEarned < recipe.starsRequiredToUnlock)
+                return false;
+
+            // Prerequisite recipe check
+            if (recipe.prerequisiteRecipe != null)
+            {
+                int prereqStars = PlayerPrefs.GetInt($"Recipe_Stars_{recipe.prerequisiteRecipe.recipeId}", 0);
+                if (prereqStars <= 0) return false;
+            }
+
+            return true;
+        }
+
+        private int CalculateTotalStarsEarned()
+        {
+            int total = 0;
+            if (recipeDatabase != null && recipeDatabase.Recipes != null)
+            {
+                foreach (var recipe in recipeDatabase.Recipes)
+                {
+                    if (recipe != null)
+                    {
+                        total += PlayerPrefs.GetInt($"Recipe_Stars_{recipe.recipeId}", 0);
+                    }
+                }
+            }
+            return total;
+        }
+
+        private void OnRecipeSelected(string sceneName)
+        {
+            if (mainMenuManager != null)
+            {
+                // Enforce single-scene architecture: Always load "Gameplay" scene.
+                // The selected recipe object is already passed to GameStateMachine.Instance.
+                mainMenuManager.LoadGameplayScene("Gameplay");
+            }
+        }
     }
 }
 </file>

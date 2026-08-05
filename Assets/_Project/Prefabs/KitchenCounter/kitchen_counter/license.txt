@@ -1,0 +1,11 @@
+Model Information:
+* title:	Kitchen counter
+* source:	https://sketchfab.com/3d-models/kitchen-counter-90a0e333d3f343ccb8957debd024f361
+* author:	leti_cipriani (https://sketchfab.com/leti_cipriani)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Kitchen counter" (https://sketchfab.com/3d-models/kitchen-counter-90a0e333d3f343ccb8957debd024f361) by leti_cipriani (https://sketchfab.com/leti_cipriani) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
