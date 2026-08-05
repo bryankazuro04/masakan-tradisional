@@ -23,3 +23,31 @@ MonoBehaviour:
   dishBannerImage: {fileID: 0}
   starsRequiredToUnlock: 0
   prerequisiteRecipe: {fileID: 0}
+  ingredients:
+  - ingredientId: 1
+    ingredientName: qwer
+    icon: {fileID: 0}
+    amount: 2
+    unit: 2
+    isOptional: 0
+  requiredTools:
+  - toolId: 1
+    toolName: zxcv
+    icon: {fileID: 0}
+    toolType: vcxz
+  stepSequence:
+  - stepId: 1
+    stepTitle: asdasdasd
+    instruction: advasdcasd
+    actionType: 0
+    requiredTool:
+      toolId: 
+      toolName: 
+      icon: {fileID: 0}
+      toolType: 
+    requiredIngredients: []
+    timeLimitSeconds: 0
+    targetTemperature: 0
+    stepIllustration: {fileID: 0}
+    stepSFX: {fileID: 0}
+    scoreMultiplier: 0

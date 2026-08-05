@@ -94,7 +94,9 @@ namespace MasakanTradisional.UI.MainMenu
         {
             if (mainMenuManager != null)
             {
-                mainMenuManager.LoadGameplayScene(sceneName);
+                // Enforce single-scene architecture: Always load "Gameplay" scene.
+                // The selected recipe object is already passed to GameStateMachine.Instance.
+                mainMenuManager.LoadGameplayScene("Gameplay");
             }
         }
     }

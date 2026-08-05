@@ -15,6 +15,12 @@ namespace MasakanTradisional.UI.MainMenu
         [SerializeField] private Sprite filledStarSprite;
         [SerializeField] private Sprite emptyStarSprite;
 
+        [Header("Extended Recipe Details")]
+        [SerializeField] private TMP_Text difficultyText;
+        [SerializeField] private TMP_Text stepCountText;
+        [SerializeField] private TMP_Text ingredientCountText;
+        [SerializeField] private TMP_Text descriptionText;
+
         [Header("Lock / Unlock UI")]
         [SerializeField] private GameObject lockOverlay;
         [SerializeField] private TMP_Text lockRequirementText;
@@ -25,6 +31,12 @@ namespace MasakanTradisional.UI.MainMenu
             if (recipeTitleText != null) recipeTitleText.text = recipeData.recipeName;
             if (regionText != null) regionText.text = recipeData.originRegion;
             if (recipeImage != null) recipeImage.sprite = recipeData.recipeIcon;
+
+            // Render extended details
+            if (difficultyText != null) difficultyText.text = recipeData.difficulty.ToString();
+            if (stepCountText != null) stepCountText.text = $"{recipeData.StepCount} Steps";
+            if (ingredientCountText != null) ingredientCountText.text = $"{recipeData.Ingredients.Count} Ingredients";
+            if (descriptionText != null) descriptionText.text = recipeData.description;
 
             // Render Stars Rating
             for (int i = 0; i < starImages.Length; i++)
@@ -47,7 +59,14 @@ namespace MasakanTradisional.UI.MainMenu
             {
                 selectButton.interactable = isUnlocked;
                 selectButton.onClick.RemoveAllListeners();
-                selectButton.onClick.AddListener(() => onRecipeSelected?.Invoke(recipeData.gameplaySceneName));
+                selectButton.onClick.AddListener(() => {
+                    onRecipeSelected?.Invoke(recipeData.gameplaySceneName);
+                    // Notify state machine directly of recipe selection
+                    if (MasakanTradisional.Core.FSM.GameStateMachine.Instance != null)
+                    {
+                        MasakanTradisional.Core.FSM.GameStateMachine.Instance.SelectRecipe(recipeData);
+                    }
+                });
             }
         }
     }
