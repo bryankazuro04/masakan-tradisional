@@ -99,6 +99,10 @@ namespace MasakanTradisional.Gameplay
                 {
                     collectible.OnCollectionChanged -= RefreshFinishButtonAvailability;
                 }
+                if (kvp.Value is IActionStationController actionStation)
+                {
+                    actionStation.OnActionChanged -= RefreshFinishButtonAvailability;
+                }
             }
         }
  
@@ -126,6 +130,10 @@ namespace MasakanTradisional.Gameplay
             if (controller is ICollectibleStation collectible)
             {
                 collectible.OnCollectionChanged += RefreshFinishButtonAvailability;
+            }
+            if (controller is IActionStationController actionStation)
+            {
+                actionStation.OnActionChanged += RefreshFinishButtonAvailability;
             }
         }
  
@@ -338,22 +346,42 @@ namespace MasakanTradisional.Gameplay
             }
             return true;
         }
- 
+
+        private bool IsActionCompleted()
+        {
+            foreach (var kvp in stationControllers)
+            {
+                if (kvp.Value is IActionStationController actionStation && !actionStation.IsActionCompleted)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         private void RefreshFinishButtonAvailability()
         {
-            bool ready = AreAllRequiredItemsCollected();
- 
+            bool itemsReady = AreAllRequiredItemsCollected();
+            bool actionReady = IsActionCompleted();
+            bool ready = itemsReady && actionReady;
+
             if (finishStepButton != null) finishStepButton.interactable = ready;
             if (collectionHintText != null)
             {
-                if (!ready)
+                if (!itemsReady)
                 {
-                    collectionHintText.text = "Collect all ingredients first!";
+                    collectionHintText.text = "Collect all ingredients & tools first!";
+                }
+                else if (!actionReady)
+                {
+                    CookingStep step = (activeRecipe != null && currentStepIndex < activeRecipe.StepCount) ? activeRecipe.GetStep(currentStepIndex) : null;
+                    string toolName = (step != null && !string.IsNullOrEmpty(step.requiredTool.toolName)) ? step.requiredTool.toolName : "tool";
+                    collectionHintText.text = $"Perform action using {toolName}!";
                 }
                 collectionHintText.gameObject.SetActive(!ready);
             }
         }
- 
+
         public void CompleteCurrentStep()
         {
             if (!AreAllRequiredItemsCollected())
@@ -361,15 +389,21 @@ namespace MasakanTradisional.Gameplay
                 Debug.LogWarning("[GameplayManager] Blocked: not all required items are collected yet.");
                 return;
             }
- 
+
+            if (!IsActionCompleted())
+            {
+                Debug.LogWarning("[GameplayManager] Blocked: interactive step action not completed yet.");
+                return;
+            }
+
             AudioManager.Instance?.PlayButtonSFX();
- 
+
             CookingStep step = activeRecipe.GetStep(currentStepIndex);
             KitchenStationType homeStation = RecommendStationForStep(step.actionType);
             FuzzyCookingEvaluator.EvaluationResult evalResult;
- 
+
             FuzzyCookingData activeFuzzyData = step.fuzzyData != null ? step.fuzzyData : activeRecipe.DefaultFuzzyData;
- 
+
             if (stationControllers.TryGetValue(homeStation, out IStationController controller) &&
                 controller is IHeatStationController heatController &&
                 step.targetTemperature > 0f && step.timeLimitSeconds > 0f)
@@ -382,10 +416,16 @@ namespace MasakanTradisional.Gameplay
                     activeFuzzyData
                 );
             }
+            else if (stationControllers.TryGetValue(homeStation, out IStationController actionCtrl) &&
+                     actionCtrl is IActionStationController actionStation && actionStation.IsActionRequired)
+            {
+                float actionScore = actionStation.ActionQualityScore;
+                evalResult = fuzzyEvaluator.EvaluateRatios(actionScore, 1.0f, activeFuzzyData);
+            }
             else
             {
                 // Non-heat steps (Prepare/Chop/Mix/PlateAndGarnish) auto-resolve to a
-                // perfect ratio - there's no slider/timer to score them against.
+                // perfect ratio if no minigame action was configured.
                 evalResult = fuzzyEvaluator.EvaluateRatios(1.0f, 1.0f, activeFuzzyData);
             }
  

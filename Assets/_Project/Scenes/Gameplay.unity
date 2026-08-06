@@ -1299,6 +1299,7 @@ MonoBehaviour:
   targetTimerText: {fileID: 1196301037}
   startCookingButton: {fileID: 1119590181}
   startButtonText: {fileID: 579829040}
+  actionController: {fileID: 0}
 --- !u!114 &181910741
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -10864,6 +10865,7 @@ MonoBehaviour:
   itemContainer: {fileID: 619375206}
   itemViewPrefab: {fileID: 7074818401784501623, guid: afb5fdf28a8f60757a64b42a194d2a90,
     type: 3}
+  actionController: {fileID: 0}
 --- !u!114 &1904680924
 MonoBehaviour:
   m_ObjectHideFlags: 0

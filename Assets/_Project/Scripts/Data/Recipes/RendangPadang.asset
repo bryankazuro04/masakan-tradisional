@@ -15,7 +15,8 @@ MonoBehaviour:
   recipeId: recipe_rendang
   recipeName: Rendang Padang
   originRegion: Padang, West Sumatra
-  description: Slow-cooked beef in coconut milk and a rich blend of traditional Indonesian spices.
+  description: Slow-cooked beef in coconut milk and a rich blend of traditional Indonesian
+    spices.
   difficulty: 1
   gameplaySceneName: Gameplay
   recipeIcon: {fileID: 0}
@@ -102,7 +103,8 @@ MonoBehaviour:
     scoreMultiplier: 1
   - stepId: step_2
     stepTitle: Haluskan Bumbu & Rempah
-    instruction: Haluskan bumbu halus dan rempah-rempah menggunakan cobek & ulekan di meja konter.
+    instruction: Haluskan bumbu halus dan rempah-rempah menggunakan cobek & ulekan
+      di meja konter.
     actionType: 2
     requiredTool:
       toolId: tool_mortar
@@ -157,7 +159,8 @@ MonoBehaviour:
     scoreMultiplier: 1
   - stepId: step_4
     stepTitle: Ungkep & Simmer Rendang
-    instruction: Masukkan daging dan santan kelapa ke dalam wajan. Masak dengan api kecil hingga kuah mengental.
+    instruction: Masukkan daging dan santan kelapa ke dalam wajan. Masak dengan api
+      kecil hingga kuah mengental.
     actionType: 6
     requiredTool:
       toolId: tool_wok
