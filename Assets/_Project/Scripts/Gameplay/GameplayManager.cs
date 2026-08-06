@@ -14,9 +14,9 @@ namespace MasakanTradisional.Gameplay
     /// <summary>
     /// Coordinator for Gameplay.unity. Owns recipe/step progression, fuzzy scoring,
     /// and result presentation. Delegates all per-station UI/interaction to
-    /// IStationController implementations - this class never touches a slider,
-    /// a heat value, or a timer directly. Adding a new station = write a controller
-    /// + assign it in the inspector, no edits needed here beyond that assignment.
+    /// IStationController implementations. Also gates step completion on
+    /// ICollectibleStation.AllRequiredItemsCollected, which is what actually gives
+    /// KitchenPrepState a gameplay purpose instead of just being a logged state.
     /// </summary>
     public class GameplayManager : MonoBehaviour
     {
@@ -38,6 +38,12 @@ namespace MasakanTradisional.Gameplay
         [SerializeField] private Button navStoveButton;
         [SerializeField] private Button navOvenButton;
  
+        [Header("Camera Rig")]
+        [Tooltip("Manages Cinemachine virtual camera switching between overview and station views.")]
+        [SerializeField] private StationCameraRig cameraRig;
+        [Tooltip("Button shown in station view to return to the main kitchen overview.")]
+        [SerializeField] private Button backToOverviewButton;
+ 
         [Header("Step Information UI")]
         [SerializeField] private TMP_Text recipeNameText;
         [SerializeField] private TMP_Text stepTitleText;
@@ -47,8 +53,10 @@ namespace MasakanTradisional.Gameplay
         [SerializeField] private TMP_Text targetToolText;
  
         [Header("Step Completion")]
-        [Tooltip("Single persistent 'Finish Step' button, always available regardless of which station panel is currently displayed.")]
+        [Tooltip("Single persistent 'Finish Step' button, always available regardless of which station panel is currently displayed. Becomes interactable only once all required items for the step are collected.")]
         [SerializeField] private Button finishStepButton;
+        [Tooltip("Optional. Shown while items are still missing, hidden once the player can finish the step.")]
+        [SerializeField] private TMP_Text collectionHintText;
  
         [Header("Result / Evaluation Modal")]
         [SerializeField] private GameObject resultModal;
@@ -81,10 +89,21 @@ namespace MasakanTradisional.Gameplay
             StartRecipeSession();
         }
  
+        private void OnDestroy()
+        {
+            foreach (var kvp in stationControllers)
+            {
+                if (kvp.Value is ICollectibleStation collectible)
+                {
+                    collectible.OnCollectionChanged -= RefreshFinishButtonAvailability;
+                }
+            }
+        }
+ 
         /// <summary>
-        /// Registers every assigned station controller by its StationType.
-        /// Leaving a slot unassigned (e.g. while incrementally building the scene)
-        /// simply means that station is skipped, not a null-ref crash.
+        /// Registers every assigned station controller by its StationType, and
+        /// subscribes to collection updates from any that implement ICollectibleStation.
+        /// Leaving a slot unassigned simply means that station is skipped, not a crash.
         /// </summary>
         private void BuildStationRegistry()
         {
@@ -101,6 +120,11 @@ namespace MasakanTradisional.Gameplay
         {
             if (controller == null) return;
             stationControllers[controller.StationType] = controller;
+ 
+            if (controller is ICollectibleStation collectible)
+            {
+                collectible.OnCollectionChanged += RefreshFinishButtonAvailability;
+            }
         }
  
         private void InitializeRecipeData()
@@ -134,6 +158,7 @@ namespace MasakanTradisional.Gameplay
  
             if (retryButton != null) retryButton.onClick.AddListener(RestartCookingSession);
             if (mainMenuButton != null) mainMenuButton.onClick.AddListener(ReturnToMainMenu);
+            if (backToOverviewButton != null) backToOverviewButton.onClick.AddListener(ReturnToOverview);
         }
  
         public void StartRecipeSession()
@@ -158,8 +183,13 @@ namespace MasakanTradisional.Gameplay
             if (activeRecipe == null || index < 0 || index >= activeRecipe.StepCount) return;
  
             CookingStep step = activeRecipe.GetStep(index);
+            KitchenStationType homeStation = RecommendStationForStep(step.actionType);
  
-            if (GameStateMachine.Instance != null && IsHeatBasedAction(step.actionType))
+            // Ask the station itself whether it's heat-based, instead of maintaining
+            // a second switch statement that has to be kept in sync with the first.
+            if (GameStateMachine.Instance != null &&
+                stationControllers.TryGetValue(homeStation, out IStationController homeController) &&
+                homeController is IHeatStationController)
             {
                 GameStateMachine.Instance.GoToCooking();
             }
@@ -170,36 +200,57 @@ namespace MasakanTradisional.Gameplay
             if (stepIllustrationImage != null) stepIllustrationImage.sprite = step.stepIllustration;
             if (targetToolText != null) targetToolText.text = $"Required Tool: {(string.IsNullOrEmpty(step.requiredTool.toolName) ? "None" : step.requiredTool.toolName)}";
  
-            // Auto-navigate to the recommended station for this step type
-            SwitchStation(RecommendStationForStep(step.actionType));
+            // Sync EVERY station to the new step, even hidden ones, so collection
+            // state and heat/timer resets are correct no matter which panel the
+            // player looks at first.
+            foreach (var kvp in stationControllers)
+            {
+                kvp.Value.SetStep(step);
+            }
+ 
+            SwitchStation(homeStation);
+            RefreshFinishButtonAvailability();
         }
  
         /// <summary>
-        /// Activates the target station's controller and deactivates every other
-        /// registered station. Nav buttons call this for free browsing; LoadStep
-        /// calls it to auto-navigate to a step's home station.
+        /// Pure visibility toggle - shows the target station's panel and hides every
+        /// other registered station. Does not touch step data (see SetStep in LoadStep).
+        /// Called internally by LoadStep (no camera change) and by NavigateToStation (with camera change).
         /// </summary>
         public void SwitchStation(KitchenStationType targetStation)
         {
             AudioManager.Instance?.PlayButtonSFX();
  
-            CookingStep step = (activeRecipe != null && currentStepIndex < activeRecipe.StepCount)
-                ? activeRecipe.GetStep(currentStepIndex)
-                : null;
- 
             foreach (var kvp in stationControllers)
             {
-                if (kvp.Key == targetStation)
-                {
-                    kvp.Value.Activate(step);
-                }
-                else
-                {
-                    kvp.Value.Deactivate();
-                }
+                if (kvp.Key == targetStation) kvp.Value.Show();
+                else kvp.Value.Hide();
             }
  
             currentStation = targetStation;
+        }
+ 
+        /// <summary>
+        /// Called by KitchenStationInteractable (world-space tap) when the player taps
+        /// an appliance in the overview. Zooms the Cinemachine camera to the station
+        /// and then opens its panel. Use this instead of SwitchStation() for player-
+        /// initiated navigation — SwitchStation() alone does not change the camera.
+        /// </summary>
+        public void NavigateToStation(KitchenStationType targetStation)
+        {
+            cameraRig?.ZoomToStation(targetStation);
+            SwitchStation(targetStation);
+        }
+ 
+        /// <summary>
+        /// Returns the Cinemachine camera to the overview shot.
+        /// Wired to the Back button in the station HUD.
+        /// Does not close the current station panel — the overview is just for navigation.
+        /// </summary>
+        public void ReturnToOverview()
+        {
+            AudioManager.Instance?.PlayButtonSFX();
+            cameraRig?.ReturnToOverview();
         }
  
         private KitchenStationType RecommendStationForStep(StepActionType actionType)
@@ -225,17 +276,47 @@ namespace MasakanTradisional.Gameplay
             }
         }
  
-        private bool IsHeatBasedAction(StepActionType actionType)
+        /// <summary>
+        /// True only when every registered ICollectibleStation reports its items
+        /// collected for the current step (stations with no items for this step are
+        /// vacuously satisfied, so a pure-Stove step never gets blocked by an
+        /// empty Shelves panel).
+        /// </summary>
+        private bool AreAllRequiredItemsCollected()
         {
-            return actionType == StepActionType.Saute ||
-                   actionType == StepActionType.Boil ||
-                   actionType == StepActionType.Simmer ||
-                   actionType == StepActionType.Fry ||
-                   actionType == StepActionType.Bake;
+            foreach (var kvp in stationControllers)
+            {
+                if (kvp.Value is ICollectibleStation collectible && !collectible.AllRequiredItemsCollected)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+ 
+        private void RefreshFinishButtonAvailability()
+        {
+            bool ready = AreAllRequiredItemsCollected();
+ 
+            if (finishStepButton != null) finishStepButton.interactable = ready;
+            if (collectionHintText != null)
+            {
+                if (!ready)
+                {
+                    collectionHintText.text = "Collect all ingredients first!";
+                }
+                collectionHintText.gameObject.SetActive(!ready);
+            }
         }
  
         public void CompleteCurrentStep()
         {
+            if (!AreAllRequiredItemsCollected())
+            {
+                Debug.LogWarning("[GameplayManager] Blocked: not all required items are collected yet.");
+                return;
+            }
+ 
             AudioManager.Instance?.PlayButtonSFX();
  
             CookingStep step = activeRecipe.GetStep(currentStepIndex);

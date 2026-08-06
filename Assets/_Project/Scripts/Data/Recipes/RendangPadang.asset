@@ -15,39 +15,167 @@ MonoBehaviour:
   recipeId: recipe_rendang
   recipeName: Rendang Padang
   originRegion: Padang, West Sumatra
-  description: Slow-cooked beef in coconut milk and a rich blend of traditional Indonesian
-    spices.
-  difficulty: 2
-  gameplaySceneName: Cooking_Rendang
+  description: Slow-cooked beef in coconut milk and a rich blend of traditional Indonesian spices.
+  difficulty: 1
+  gameplaySceneName: Gameplay
   recipeIcon: {fileID: 0}
   dishBannerImage: {fileID: 0}
+  defaultFuzzyData: {fileID: 0}
   starsRequiredToUnlock: 0
   prerequisiteRecipe: {fileID: 0}
   ingredients:
-  - ingredientId: 1
-    ingredientName: qwer
+  - ingredientId: ing_beef
+    ingredientName: Daging Sapi (Beef Chunk)
     icon: {fileID: 0}
-    amount: 2
-    unit: 2
+    amount: 500
+    unit: g
     isOptional: 0
-  requiredTools:
-  - toolId: 1
-    toolName: zxcv
+    sourceStation: 1
+  - ingredientId: ing_coconut_milk
+    ingredientName: Santan Kelapa (Coconut Milk)
     icon: {fileID: 0}
-    toolType: vcxz
+    amount: 400
+    unit: ml
+    isOptional: 0
+    sourceStation: 1
+  - ingredientId: ing_bumbu_halus
+    ingredientName: Bumbu Halus (Shallot, Garlic, Chili)
+    icon: {fileID: 0}
+    amount: 150
+    unit: g
+    isOptional: 0
+    sourceStation: 1
+  - ingredientId: ing_aromatics
+    ingredientName: Daun Jeruk & Serai (Aromatics)
+    icon: {fileID: 0}
+    amount: 4
+    unit: pcs
+    isOptional: 0
+    sourceStation: 1
+  - ingredientId: ing_spices
+    ingredientName: Rempah Rendang & Garam (Dry Spices)
+    icon: {fileID: 0}
+    amount: 20
+    unit: g
+    isOptional: 0
+    sourceStation: 0
+  requiredTools:
+  - toolId: tool_knife
+    toolName: Pisau Dapur (Chef Knife)
+    icon: {fileID: 0}
+    toolType: Knife
+    sourceStation: 2
+  - toolId: tool_mortar
+    toolName: Cobek & Ulekan (Mortar & Pestle)
+    icon: {fileID: 0}
+    toolType: Mortar & Pestle
+    sourceStation: 2
+  - toolId: tool_wok
+    toolName: Wajan / Wok
+    icon: {fileID: 0}
+    toolType: Wok
+    sourceStation: 3
   stepSequence:
-  - stepId: 1
-    stepTitle: asdasdasd
-    instruction: advasdcasd
+  - stepId: step_1
+    stepTitle: Persiapan Daging Sapi
+    instruction: Ambil daging sapi dari kulkas dan potong menjadi dadu sedang.
     actionType: 0
     requiredTool:
-      toolId: 
-      toolName: 
+      toolId: tool_knife
+      toolName: Pisau Dapur (Chef Knife)
       icon: {fileID: 0}
-      toolType: 
-    requiredIngredients: []
-    timeLimitSeconds: 0
+      toolType: Knife
+      sourceStation: 2
+    requiredIngredients:
+    - ingredientId: ing_beef
+      ingredientName: Daging Sapi (Beef Chunk)
+      icon: {fileID: 0}
+      amount: 500
+      unit: g
+      isOptional: 0
+      sourceStation: 1
+    timeLimitSeconds: 30
     targetTemperature: 0
     stepIllustration: {fileID: 0}
     stepSFX: {fileID: 0}
-    scoreMultiplier: 0
+    fuzzyData: {fileID: 0}
+    scoreMultiplier: 1
+  - stepId: step_2
+    stepTitle: Haluskan Bumbu & Rempah
+    instruction: Haluskan bumbu halus dan rempah-rempah menggunakan cobek & ulekan di meja konter.
+    actionType: 2
+    requiredTool:
+      toolId: tool_mortar
+      toolName: Cobek & Ulekan (Mortar & Pestle)
+      icon: {fileID: 0}
+      toolType: Mortar & Pestle
+      sourceStation: 2
+    requiredIngredients:
+    - ingredientId: ing_bumbu_halus
+      ingredientName: Bumbu Halus (Shallot, Garlic, Chili)
+      icon: {fileID: 0}
+      amount: 150
+      unit: g
+      isOptional: 0
+      sourceStation: 1
+    - ingredientId: ing_spices
+      ingredientName: Rempah Rendang & Garam (Dry Spices)
+      icon: {fileID: 0}
+      amount: 20
+      unit: g
+      isOptional: 0
+      sourceStation: 0
+    timeLimitSeconds: 45
+    targetTemperature: 0
+    stepIllustration: {fileID: 0}
+    stepSFX: {fileID: 0}
+    fuzzyData: {fileID: 0}
+    scoreMultiplier: 1
+  - stepId: step_3
+    stepTitle: Tumis Bumbu Halus
+    instruction: Tumis bumbu halus dan daun aromatik di atas kompor hingga harum.
+    actionType: 4
+    requiredTool:
+      toolId: tool_wok
+      toolName: Wajan / Wok
+      icon: {fileID: 0}
+      toolType: Wok
+      sourceStation: 3
+    requiredIngredients:
+    - ingredientId: ing_aromatics
+      ingredientName: Daun Jeruk & Serai (Aromatics)
+      icon: {fileID: 0}
+      amount: 4
+      unit: pcs
+      isOptional: 0
+      sourceStation: 1
+    timeLimitSeconds: 60
+    targetTemperature: 120
+    stepIllustration: {fileID: 0}
+    stepSFX: {fileID: 0}
+    fuzzyData: {fileID: 0}
+    scoreMultiplier: 1
+  - stepId: step_4
+    stepTitle: Ungkep & Simmer Rendang
+    instruction: Masukkan daging dan santan kelapa ke dalam wajan. Masak dengan api kecil hingga kuah mengental.
+    actionType: 6
+    requiredTool:
+      toolId: tool_wok
+      toolName: Wajan / Wok
+      icon: {fileID: 0}
+      toolType: Wok
+      sourceStation: 3
+    requiredIngredients:
+    - ingredientId: ing_coconut_milk
+      ingredientName: Santan Kelapa (Coconut Milk)
+      icon: {fileID: 0}
+      amount: 400
+      unit: ml
+      isOptional: 0
+      sourceStation: 1
+    timeLimitSeconds: 90
+    targetTemperature: 95
+    stepIllustration: {fileID: 0}
+    stepSFX: {fileID: 0}
+    fuzzyData: {fileID: 0}
+    scoreMultiplier: 1.2

@@ -1,0 +1,11 @@
+Model Information:
+* title:	Bread oven - 烤箱
+* source:	https://sketchfab.com/3d-models/bread-oven-4984507fb0b44c31887ecd49e5f6a18b
+* author:	MrdT (https://sketchfab.com/mrdt.club)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Bread oven - 烤箱" (https://sketchfab.com/3d-models/bread-oven-4984507fb0b44c31887ecd49e5f6a18b) by MrdT (https://sketchfab.com/mrdt.club) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

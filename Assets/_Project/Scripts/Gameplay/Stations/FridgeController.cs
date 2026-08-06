@@ -1,3 +1,5 @@
+using MasakanTradisional.Data;
+ 
 namespace MasakanTradisional.Gameplay.Stations
 {
     /// <summary>

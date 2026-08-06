@@ -1,5 +1,4 @@
-// Moved out of GameplayManager.cs so it's not buried in the coordinator file.
-namespace MasakanTradisional.Gameplay
+namespace MasakanTradisional.Data
 {
     public enum KitchenStationType
     {

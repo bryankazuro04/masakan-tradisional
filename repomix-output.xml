@@ -49,15 +49,23 @@ Assets/
       FuzzyCookingData.cs
     Scripts/
       Data/
+        KitchenStationType.cs
         RecipeData.cs
         RecipeDatabase.cs
+      Editor/
+        CollectibleItemViewBuilder.cs
+        GameplayManagerWiringTool.cs
+        StationPanelWiringTool.cs
       Gameplay/
         Stations/
+          CollectibleItemView.cs
           CounterController.cs
           FridgeController.cs
           HeatStationControllerBase.cs
-          IngridientDisplayStationBase.cs
+          ICollectibleStation.cs
+          IngredientDisplayStationBase.cs
           IStationController.cs
+          KitchenStationInteractable.cs
           OvenController.cs
           ShelvesController.cs
           StationControllerBase.cs
@@ -65,7 +73,8 @@ Assets/
         FuzzyCookingEvaluator.cs
         GameplayManager.cs
         GameStateMachine.cs
-        KitchenStationType.cs
+        KitchenInputController.cs
+        StationCameraRig.cs
       Main Menu/
         CreditController.cs
         MainMenuManager.cs
@@ -136,6 +145,1153 @@ Assets/
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="Assets/_Project/Scripts/Data/KitchenStationType.cs">
+namespace MasakanTradisional.Data
+{
+    public enum KitchenStationType
+    {
+        Shelves,
+        Fridge,
+        Counter,
+        Stove,
+        Oven
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Editor/CollectibleItemViewBuilder.cs">
+using UnityEditor;
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using MasakanTradisional.Gameplay.Stations;
+
+namespace MasakanTradisional.Editor
+{
+    public static class CollectibleItemViewBuilder
+    {
+        [MenuItem("Tools/Build CollectibleItemView Prefab")]
+        public static void BuildPrefab()
+        {
+            // 1. Create root GameObject
+            GameObject root = new GameObject("CollectibleItemView", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Button), typeof(CollectibleItemView));
+            
+            RectTransform rootRect = root.GetComponent<RectTransform>();
+            rootRect.sizeDelta = new Vector2(100, 100);
+
+            Image rootImage = root.GetComponent<Image>();
+            Button button = root.GetComponent<Button>();
+            button.targetGraphic = rootImage;
+
+            CollectibleItemView view = root.GetComponent<CollectibleItemView>();
+
+            // 2. Child 1: Icon (Image)
+            GameObject iconGo = new GameObject("Icon", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            iconGo.transform.SetParent(root.transform, false);
+            RectTransform iconRect = iconGo.GetComponent<RectTransform>();
+            iconRect.anchorMin = new Vector2(0.1f, 0.3f);
+            iconRect.anchorMax = new Vector2(0.9f, 0.9f);
+            iconRect.offsetMin = Vector2.zero;
+            iconRect.offsetMax = Vector2.zero;
+            Image iconImage = iconGo.GetComponent<Image>();
+
+            // 3. Child 2: Name (TMP_Text)
+            GameObject nameGo = new GameObject("NameLabel", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+            nameGo.transform.SetParent(root.transform, false);
+            RectTransform nameRect = nameGo.GetComponent<RectTransform>();
+            nameRect.anchorMin = new Vector2(0f, 0f);
+            nameRect.anchorMax = new Vector2(1f, 0.3f);
+            nameRect.offsetMin = Vector2.zero;
+            nameRect.offsetMax = Vector2.zero;
+            TextMeshProUGUI nameText = nameGo.GetComponent<TextMeshProUGUI>();
+            nameText.text = "Item Name";
+            nameText.alignment = TextAlignmentOptions.Center;
+            nameText.fontSize = 14;
+
+            // 4. Child 3: Checkmark (GameObject, starts inactive)
+            GameObject checkmarkGo = new GameObject("CollectedCheckmark", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            checkmarkGo.transform.SetParent(root.transform, false);
+            RectTransform checkmarkRect = checkmarkGo.GetComponent<RectTransform>();
+            checkmarkRect.anchorMin = new Vector2(0.7f, 0.7f);
+            checkmarkRect.anchorMax = new Vector2(1f, 1f);
+            checkmarkRect.offsetMin = Vector2.zero;
+            checkmarkRect.offsetMax = Vector2.zero;
+            checkmarkGo.SetActive(false); // starts inactive
+
+            // 5. Wire references on CollectibleItemView
+            SerializedObject serializedView = new SerializedObject(view);
+            serializedView.FindProperty("iconImage").objectReferenceValue = iconImage;
+            serializedView.FindProperty("nameText").objectReferenceValue = nameText;
+            serializedView.FindProperty("clickButton").objectReferenceValue = button;
+            serializedView.FindProperty("collectedCheckmark").objectReferenceValue = checkmarkGo;
+            serializedView.ApplyModifiedProperties();
+
+            // 6. Save as Prefab
+            string dir = "Assets/_Project/Prefabs";
+            if (!AssetDatabase.IsValidFolder(dir))
+            {
+                AssetDatabase.CreateFolder("Assets/_Project", "Prefabs");
+            }
+            string prefabPath = $"{dir}/CollectibleItemView.prefab";
+            PrefabUtility.SaveAsPrefabAsset(root, prefabPath);
+
+            // Destroy temp hierarchy in scene
+            Object.DestroyImmediate(root);
+
+            Debug.Log($"Successfully created CollectibleItemView prefab at {prefabPath}");
+            AssetDatabase.Refresh();
+        }
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Editor/GameplayManagerWiringTool.cs">
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.SceneManagement;
+using TMPro;
+using MasakanTradisional.Data;
+using MasakanTradisional.Gameplay.Evaluation;
+using MasakanTradisional.Gameplay.Stations;
+using MasakanTradisional.Gameplay;
+
+namespace MasakanTradisional.Editor
+{
+    public static class GameplayManagerWiringTool
+    {
+        [MenuItem("Tools/Wire Gameplay Manager")]
+        [InitializeOnLoadMethod]
+        public static void WireGameplayManager()
+        {
+            Gameplay.GameplayManager manager = Object.FindFirstObjectByType<Gameplay.GameplayManager>();
+            if (manager == null)
+            {
+                Debug.LogError("[GameplayManagerWiringTool] GameplayManager component not found in scene!");
+                return;
+            }
+            GameObject mgrGo = manager.gameObject;
+            Scene currentScene = mgrGo.scene;
+
+            SerializedObject so = new SerializedObject(manager);
+
+            // 1. Data & Fallback Settings
+            string recipePath = "Assets/_Project/Scripts/Data/Recipes/RendangPadang.asset";
+            RecipeData recipe = AssetDatabase.LoadAssetAtPath<RecipeData>(recipePath);
+            if (recipe == null)
+            {
+                recipePath = "Assets/_Project/Scripts/Data/Recipes/NewRecipeData.asset";
+                recipe = AssetDatabase.LoadAssetAtPath<RecipeData>(recipePath);
+            }
+            SetObjectProp(so, "defaultFallbackRecipe", recipe);
+
+            FuzzyCookingEvaluator fuzzy = mgrGo.GetComponent<FuzzyCookingEvaluator>();
+            if (fuzzy == null) fuzzy = mgrGo.AddComponent<FuzzyCookingEvaluator>();
+            SetObjectProp(so, "fuzzyEvaluator", fuzzy);
+
+            // 2. Station Controllers
+            SetStationControllerProp<ShelvesController>(so, currentScene, "ShelvesPanel", "shelvesController");
+            SetStationControllerProp<FridgeController>(so, currentScene, "FridgePanel", "fridgeController");
+            SetStationControllerProp<CounterController>(so, currentScene, "CounterPanel", "counterController");
+            SetStationControllerProp<StoveController>(so, currentScene, "StovePanel", "stoveController");
+            SetStationControllerProp<OvenController>(so, currentScene, "OvenPanel", "ovenController");
+
+            // 3. Station Switcher Buttons
+            SetComponentProp<Button>(so, currentScene, "NavShelvesButton", "navShelvesButton");
+            SetComponentProp<Button>(so, currentScene, "NavFridgeButton", "navFridgeButton");
+            SetComponentProp<Button>(so, currentScene, "NavCounterButton", "navCounterButton");
+            SetComponentProp<Button>(so, currentScene, "NavStoveButton", "navStoveButton");
+            SetComponentProp<Button>(so, currentScene, "NavOvenButton", "navOvenButton");
+
+            // 3b. Create BackToOverviewButton if missing & wire it
+            GameObject backBtnGo = FindGameObjectInScene(currentScene, "BackToOverviewButton");
+            if (backBtnGo == null)
+            {
+                GameObject hudGo = FindGameObjectInScene(currentScene, "HUD");
+                backBtnGo = new GameObject("BackToOverviewButton", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Button));
+                if (hudGo != null) backBtnGo.transform.SetParent(hudGo.transform, false);
+                
+                RectTransform rt = backBtnGo.GetComponent<RectTransform>();
+                rt.anchorMin = new Vector2(0, 1);
+                rt.anchorMax = new Vector2(0, 1);
+                rt.pivot = new Vector2(0, 1);
+                rt.anchoredPosition = new Vector2(20, -100);
+                rt.sizeDelta = new Vector2(200, 60);
+
+                Undo.RegisterCreatedObjectUndo(backBtnGo, "Create BackToOverviewButton");
+            }
+
+            if (backBtnGo != null)
+            {
+                TextMeshProUGUI label = backBtnGo.GetComponentInChildren<TextMeshProUGUI>(true);
+                if (label == null)
+                {
+                    GameObject labelGo = new GameObject("Text (TMP)", typeof(RectTransform));
+                    labelGo.transform.SetParent(backBtnGo.transform, false);
+                    label = labelGo.AddComponent<TextMeshProUGUI>();
+                    label.text = "← Back";
+                    label.fontSize = 24;
+                    label.alignment = TextAlignmentOptions.Center;
+                    label.color = new Color(0.2f, 0.2f, 0.2f, 1f);
+
+                    RectTransform labelRt = labelGo.GetComponent<RectTransform>();
+                    labelRt.anchorMin = Vector2.zero;
+                    labelRt.anchorMax = Vector2.one;
+                    labelRt.sizeDelta = Vector2.zero;
+                    labelRt.anchoredPosition = Vector2.zero;
+                }
+
+                Button backBtn = backBtnGo.GetComponent<Button>();
+                SetObjectProp(so, "backToOverviewButton", backBtn);
+            }
+
+            // 3c. Create StationCameraRig if missing & wire it
+            GameObject cameraRigGo = FindGameObjectInScene(currentScene, "StationCameraRig");
+            if (cameraRigGo == null)
+            {
+                cameraRigGo = new GameObject("StationCameraRig", typeof(StationCameraRig));
+                Undo.RegisterCreatedObjectUndo(cameraRigGo, "Create StationCameraRig");
+            }
+            if (cameraRigGo != null)
+            {
+                StationCameraRig rigComp = cameraRigGo.GetComponent<StationCameraRig>();
+                SetObjectProp(so, "cameraRig", rigComp);
+            }
+
+            // 4. Step Information UI
+            SetComponentProp<TMP_Text>(so, currentScene, "RecipeNameText", "recipeNameText");
+            SetComponentProp<TMP_Text>(so, currentScene, "StepTitleText", "stepTitleText");
+            SetComponentProp<TMP_Text>(so, currentScene, "StepInstructionText", "stepInstructionText");
+            SetComponentProp<TMP_Text>(so, currentScene, "StepProgressText", "stepProgressText");
+            SetComponentProp<Image>(so, currentScene, "StepIllustrationImage", "stepIllustrationImage");
+            SetComponentProp<TMP_Text>(so, currentScene, "TargetToolText", "targetToolText");
+
+            // 5. Step Completion
+            SetComponentProp<Button>(so, currentScene, "FinishStepButton", "finishStepButton");
+
+            GameObject hintGo = FindGameObjectInScene(currentScene, "CollectionHintText");
+            if (hintGo == null)
+            {
+                GameObject finishBtnGo = FindGameObjectInScene(currentScene, "FinishStepButton");
+                GameObject hudGo = FindGameObjectInScene(currentScene, "HUD");
+                Transform parentTrans = finishBtnGo != null ? finishBtnGo.transform.parent : (hudGo != null ? hudGo.transform : null);
+
+                if (parentTrans != null)
+                {
+                    hintGo = new GameObject("CollectionHintText", typeof(RectTransform));
+                    hintGo.transform.SetParent(parentTrans, false);
+                    TextMeshProUGUI tmp = hintGo.AddComponent<TextMeshProUGUI>();
+                    tmp.text = "Collect all ingredients first!";
+                    tmp.fontSize = 20;
+                    tmp.alignment = TextAlignmentOptions.Center;
+                    tmp.color = new Color(1f, 0.8f, 0.2f, 1f);
+
+                    RectTransform rt = hintGo.GetComponent<RectTransform>();
+                    rt.anchorMin = new Vector2(0.5f, 0.5f);
+                    rt.anchorMax = new Vector2(0.5f, 0.5f);
+                    rt.sizeDelta = new Vector2(350, 40);
+
+                    if (finishBtnGo != null)
+                    {
+                        RectTransform finishRt = finishBtnGo.GetComponent<RectTransform>();
+                        rt.anchoredPosition = finishRt.anchoredPosition + new Vector2(0, 45f);
+                    }
+
+                    Undo.RegisterCreatedObjectUndo(hintGo, "Create CollectionHintText");
+                }
+            }
+
+            if (hintGo != null)
+            {
+                TMP_Text hintTmp = hintGo.GetComponent<TMP_Text>();
+                SetObjectProp(so, "collectionHintText", hintTmp);
+            }
+
+            // 6. Result / Evaluation Modal
+            GameObject resultModalGo = FindGameObjectInScene(currentScene, "ResultModal");
+            SetObjectProp(so, "resultModal", resultModalGo);
+
+            SetComponentProp<TMP_Text>(so, currentScene, "ResultScoreText", "resultScoreText");
+            SetComponentProp<TMP_Text>(so, currentScene, "ResultGradeText", "resultGradeText");
+            SetComponentProp<TMP_Text>(so, currentScene, "ResultStatusLabelText", "resultStatusLabelText");
+
+            GameObject starsRowGo = FindGameObjectInScene(currentScene, "StarsRow");
+            if (starsRowGo != null)
+            {
+                Image[] stars = starsRowGo.GetComponentsInChildren<Image>(true);
+                SerializedProperty starsProp = so.FindProperty("resultStars");
+                if (starsProp != null)
+                {
+                    starsProp.arraySize = stars.Length;
+                    for (int i = 0; i < stars.Length; i++)
+                    {
+                        starsProp.GetArrayElementAtIndex(i).objectReferenceValue = stars[i];
+                    }
+                }
+            }
+
+            Sprite filledStar = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
+            Sprite emptyStar = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Background.psd");
+            SetObjectProp(so, "filledStarSprite", filledStar);
+            SetObjectProp(so, "emptyStarSprite", emptyStar);
+
+            SetComponentProp<Button>(so, currentScene, "RetryButton", "retryButton");
+            SetComponentProp<Button>(so, currentScene, "MainMenuButton", "mainMenuButton");
+
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(manager);
+            EditorUtility.SetDirty(mgrGo);
+
+            // Wire StationCameraRig Virtual Cameras
+            if (cameraRigGo != null)
+            {
+                StationCameraRig rig = cameraRigGo.GetComponent<StationCameraRig>();
+                if (rig != null)
+                {
+                    SerializedObject rigSo = new SerializedObject(rig);
+                    Cinemachine.CinemachineVirtualCamera overviewCam = FindComponentInScene<Cinemachine.CinemachineVirtualCamera>(currentScene, "MainVirtualCamera");
+                    if (overviewCam == null)
+                    {
+                        overviewCam = FindComponentInScene<Cinemachine.CinemachineVirtualCamera>(currentScene, "Virtual Camera (1)");
+                    }
+                    SetObjectProp(rigSo, "overviewCamera", overviewCam);
+
+                    SerializedProperty listProp = rigSo.FindProperty("stationCameras");
+                    if (listProp != null)
+                    {
+                        listProp.arraySize = 5;
+                        string[] camNames = new string[] { "ShelvesCamera", "FridgeCamera", "CounterCamera", "StoveCamera", "OvenCamera" };
+                        for (int i = 0; i < 5; i++)
+                        {
+                            Cinemachine.CinemachineVirtualCamera vcam = FindComponentInScene<Cinemachine.CinemachineVirtualCamera>(currentScene, camNames[i]);
+                            if (vcam == null)
+                            {
+                                GameObject camGo = new GameObject(camNames[i], typeof(Cinemachine.CinemachineVirtualCamera));
+                                vcam = camGo.GetComponent<Cinemachine.CinemachineVirtualCamera>();
+                                vcam.m_Priority = 9;
+                                Undo.RegisterCreatedObjectUndo(camGo, $"Create {camNames[i]}");
+                            }
+
+                            SerializedProperty elem = listProp.GetArrayElementAtIndex(i);
+                            SerializedProperty typeProp = elem.FindPropertyRelative("stationType");
+                            SerializedProperty vcamProp = elem.FindPropertyRelative("virtualCamera");
+
+                            if (typeProp != null) typeProp.enumValueIndex = i;
+                            if (vcamProp != null) vcamProp.objectReferenceValue = vcam;
+                        }
+                    }
+                    rigSo.ApplyModifiedProperties();
+                    EditorUtility.SetDirty(rig);
+                    EditorUtility.SetDirty(cameraRigGo);
+                }
+            }
+
+            // Create & Wire KitchenInputController
+            GameObject inputGo = FindGameObjectInScene(currentScene, "KitchenInputController");
+            if (inputGo == null)
+            {
+                inputGo = new GameObject("KitchenInputController", typeof(KitchenInputController));
+                Undo.RegisterCreatedObjectUndo(inputGo, "Create KitchenInputController");
+            }
+            if (inputGo != null)
+            {
+                KitchenInputController inputCtrl = inputGo.GetComponent<KitchenInputController>();
+                if (inputCtrl != null)
+                {
+                    SerializedObject inputSo = new SerializedObject(inputCtrl);
+                    SetObjectProp(inputSo, "mainCamera", Camera.main);
+                    SetObjectProp(inputSo, "gameplayManager", manager);
+                    if (cameraRigGo != null) SetObjectProp(inputSo, "cameraRig", cameraRigGo.GetComponent<StationCameraRig>());
+                    inputSo.ApplyModifiedProperties();
+                    EditorUtility.SetDirty(inputCtrl);
+                    EditorUtility.SetDirty(inputGo);
+                }
+            }
+
+            // Wire KitchenStationInteractable stationTypes on 3D objects
+            WireInteractable(currentScene, "ShelfWithEquipment01", KitchenStationType.Shelves);
+            WireInteractable(currentScene, "FreeRefrigerator", KitchenStationType.Fridge);
+            WireInteractable(currentScene, "FreeCabinet03", KitchenStationType.Counter);
+            WireInteractable(currentScene, "StoveWithExtractorHood", KitchenStationType.Stove);
+            WireInteractable(currentScene, "FreeMirkowave", KitchenStationType.Oven);
+
+            EditorSceneManager.MarkSceneDirty(currentScene);
+            EditorSceneManager.SaveOpenScenes();
+            AssetDatabase.SaveAssets();
+
+            Debug.Log("[GameplayManagerWiringTool] GameplayManager & Camera Rig wiring completed successfully!");
+        }
+
+        private static void WireInteractable(Scene scene, string gameObjectName, KitchenStationType type)
+        {
+            GameObject go = FindGameObjectInScene(scene, gameObjectName);
+            if (go != null)
+            {
+                KitchenStationInteractable interactable = go.GetComponent<KitchenStationInteractable>();
+                if (interactable == null) interactable = go.AddComponent<KitchenStationInteractable>();
+                
+                SerializedObject interactableSo = new SerializedObject(interactable);
+                SerializedProperty typeProp = interactableSo.FindProperty("stationType");
+                if (typeProp != null)
+                {
+                    typeProp.enumValueIndex = (int)type;
+                }
+                interactableSo.ApplyModifiedProperties();
+                EditorUtility.SetDirty(interactable);
+                EditorUtility.SetDirty(go);
+
+                if (go.GetComponentInChildren<Collider>(true) == null)
+                {
+                    go.AddComponent<BoxCollider>();
+                }
+            }
+        }
+
+        private static T FindComponentInScene<T>(Scene scene, string name) where T : Component
+        {
+            GameObject go = FindGameObjectInScene(scene, name);
+            return go != null ? go.GetComponent<T>() : null;
+        }
+
+        private static void SetObjectProp(SerializedObject so, string propName, UnityEngine.Object value)
+        {
+            SerializedProperty prop = so.FindProperty(propName);
+            if (prop != null)
+            {
+                prop.objectReferenceValue = value;
+            }
+            else
+            {
+                Debug.LogWarning($"[GameplayManagerWiringTool] Property '{propName}' not found!");
+            }
+        }
+
+        private static void SetComponentProp<T>(SerializedObject so, Scene scene, string gameObjectName, string propName) where T : Component
+        {
+            GameObject go = FindGameObjectInScene(scene, gameObjectName);
+            if (go != null)
+            {
+                T comp = go.GetComponent<T>();
+                if (comp != null)
+                {
+                    SetObjectProp(so, propName, comp);
+                }
+                else
+                {
+                    Debug.LogWarning($"[GameplayManagerWiringTool] Component {typeof(T).Name} not found on {gameObjectName}!");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"[GameplayManagerWiringTool] GameObject '{gameObjectName}' not found in scene!");
+            }
+        }
+
+        private static void SetStationControllerProp<T>(SerializedObject so, Scene scene, string gameObjectName, string propName) where T : Component
+        {
+            SetComponentProp<T>(so, scene, gameObjectName, propName);
+        }
+
+        private static GameObject FindGameObjectInScene(Scene scene, string name)
+        {
+            if (scene.isLoaded)
+            {
+                foreach (GameObject root in scene.GetRootGameObjects())
+                {
+                    Transform[] transforms = root.GetComponentsInChildren<Transform>(true);
+                    foreach (Transform t in transforms)
+                    {
+                        if (t.gameObject.name == name)
+                        {
+                            return t.gameObject;
+                        }
+                    }
+                }
+            }
+
+            GameObject found = GameObject.Find(name);
+            if (found != null) return found;
+
+            Transform[] allTransforms = Resources.FindObjectsOfTypeAll<Transform>();
+            foreach (Transform t in allTransforms)
+            {
+                if (t.hideFlags == HideFlags.None && t.gameObject.name == name)
+                {
+                    return t.gameObject;
+                }
+            }
+
+            return null;
+        }
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Editor/StationPanelWiringTool.cs">
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.SceneManagement;
+using MasakanTradisional.Gameplay.Stations;
+
+namespace MasakanTradisional.Editor
+{
+    public static class StationPanelWiringTool
+    {
+        [MenuItem("Tools/Wire Station Panels")]
+        public static void WirePanels()
+        {
+            string prefabPath = "Assets/_Project/Prefabs/CollectibleItemView.prefab";
+            CollectibleItemView itemPrefab = AssetDatabase.LoadAssetAtPath<CollectibleItemView>(prefabPath);
+
+            if (itemPrefab == null)
+            {
+                Debug.LogError($"[StationPanelWiringTool] Could not find CollectibleItemView prefab at {prefabPath}");
+                return;
+            }
+
+            Scene currentScene = SceneManager.GetActiveScene();
+
+            string[] panelNames = new string[] { "ShelvesPanel", "FridgePanel", "CounterPanel" };
+
+            foreach (string panelName in panelNames)
+            {
+                GameObject panelGo = FindGameObjectInScene(currentScene, panelName);
+                if (panelGo == null)
+                {
+                    Debug.LogError($"[StationPanelWiringTool] GameObject '{panelName}' not found in scene '{currentScene.name}'!");
+                    continue;
+                }
+
+                // 1. Find or create ItemContainer child
+                Transform containerTrans = panelGo.transform.Find("ItemContainer");
+                GameObject containerGo;
+
+                if (containerTrans == null)
+                {
+                    containerGo = new GameObject("ItemContainer", typeof(RectTransform));
+                    containerGo.transform.SetParent(panelGo.transform, false);
+                    Undo.RegisterCreatedObjectUndo(containerGo, $"Create ItemContainer in {panelName}");
+                }
+                else
+                {
+                    containerGo = containerTrans.gameObject;
+                }
+
+                RectTransform containerRect = containerGo.GetComponent<RectTransform>();
+                containerRect.anchorMin = new Vector2(0.05f, 0.05f);
+                containerRect.anchorMax = new Vector2(0.95f, 0.75f);
+                containerRect.offsetMin = Vector2.zero;
+                containerRect.offsetMax = Vector2.zero;
+
+                // 2. Add or ensure GridLayoutGroup
+                GridLayoutGroup gridLayout = containerGo.GetComponent<GridLayoutGroup>();
+                if (gridLayout == null)
+                {
+                    gridLayout = containerGo.AddComponent<GridLayoutGroup>();
+                }
+                gridLayout.cellSize = new Vector2(100, 100);
+                gridLayout.spacing = new Vector2(15, 15);
+                gridLayout.padding = new RectOffset(10, 10, 10, 10);
+                gridLayout.childAlignment = TextAnchor.UpperLeft;
+
+                // 3. Assign properties on panel controller component
+                IngredientDisplayStationBase stationController = panelGo.GetComponent<IngredientDisplayStationBase>();
+                if (stationController != null)
+                {
+                    SerializedObject so = new SerializedObject(stationController);
+                    SerializedProperty containerProp = so.FindProperty("itemContainer");
+                    SerializedProperty prefabProp = so.FindProperty("itemViewPrefab");
+
+                    if (containerProp != null) containerProp.objectReferenceValue = containerGo.transform;
+                    if (prefabProp != null) prefabProp.objectReferenceValue = itemPrefab;
+
+                    so.ApplyModifiedProperties();
+                    EditorUtility.SetDirty(stationController);
+                    Debug.Log($"[StationPanelWiringTool] Successfully wired {panelName}: itemContainer assigned, itemViewPrefab assigned.");
+                }
+                else
+                {
+                    Debug.LogError($"[StationPanelWiringTool] No IngredientDisplayStationBase component found on {panelName}!");
+                }
+
+                EditorUtility.SetDirty(containerGo);
+                EditorUtility.SetDirty(panelGo);
+            }
+
+            EditorSceneManager.MarkSceneDirty(currentScene);
+            EditorSceneManager.SaveOpenScenes();
+            AssetDatabase.SaveAssets();
+            Debug.Log("[StationPanelWiringTool] Station panel wiring completed successfully!");
+        }
+
+        private static GameObject FindGameObjectInScene(Scene scene, string name)
+        {
+            foreach (GameObject root in scene.GetRootGameObjects())
+            {
+                Transform[] transforms = root.GetComponentsInChildren<Transform>(true);
+                foreach (Transform t in transforms)
+                {
+                    if (t.gameObject.name == name)
+                    {
+                        return t.gameObject;
+                    }
+                }
+            }
+            return null;
+        }
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Gameplay/Stations/CollectibleItemView.cs">
+using System;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+ 
+namespace MasakanTradisional.Gameplay.Stations
+{
+    /// <summary>
+    /// One clickable ingredient/tool entry inside a collectible station panel.
+    /// Spawned at runtime by IngredientDisplayStationBase for each item this
+    /// station is responsible for on the current step. Build the prefab as:
+    /// Button root -> Icon (Image) + NameLabel (TMP_Text) + CollectedCheckmark (Image/GameObject, starts inactive).
+    /// </summary>
+    public class CollectibleItemView : MonoBehaviour
+    {
+        [SerializeField] private Image iconImage;
+        [SerializeField] private TMP_Text nameText;
+        [SerializeField] private Button clickButton;
+        [SerializeField] private GameObject collectedCheckmark;
+ 
+        private bool isCollected;
+        private Action onCollectedCallback;
+ 
+        public void Setup(Sprite icon, string displayName, Action onCollected)
+        {
+            if (iconImage != null) iconImage.sprite = icon;
+            if (nameText != null) nameText.text = displayName;
+ 
+            isCollected = false;
+            if (collectedCheckmark != null) collectedCheckmark.SetActive(false);
+ 
+            onCollectedCallback = onCollected;
+ 
+            if (clickButton != null)
+            {
+                clickButton.onClick.RemoveAllListeners();
+                clickButton.onClick.AddListener(HandleClick);
+                clickButton.interactable = true;
+            }
+        }
+ 
+        private void HandleClick()
+        {
+            if (isCollected) return;
+            isCollected = true;
+ 
+            if (collectedCheckmark != null) collectedCheckmark.SetActive(true);
+            if (clickButton != null) clickButton.interactable = false;
+ 
+            onCollectedCallback?.Invoke();
+        }
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Gameplay/Stations/ICollectibleStation.cs">
+using System;
+ 
+namespace MasakanTradisional.Gameplay.Stations
+{
+    /// <summary>
+    /// Contract for stations where the player must click to collect required
+    /// ingredients/tools before a step can be finished (Shelves, Fridge, Counter
+    /// today; any future station showing pickable items can implement this too).
+    /// </summary>
+    public interface ICollectibleStation : IStationController
+    {
+        /// <summary>True once every item this station is responsible for (for the current step) has been collected. Vacuously true if the step has no items assigned to this station.</summary>
+        bool AllRequiredItemsCollected { get; }
+ 
+        /// <summary>Raised whenever collection progress changes, so GameplayManager can re-check whether Finish Step should be enabled.</summary>
+        event Action OnCollectionChanged;
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Gameplay/Stations/IngredientDisplayStationBase.cs">
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+using MasakanTradisional.Data;
+ 
+namespace MasakanTradisional.Gameplay.Stations
+{
+    /// <summary>
+    /// Shared base for stations where the player collects required ingredients/tools
+    /// by clicking them (Shelves, Fridge, Counter). Only items whose sourceStation
+    /// matches this station's StationType are spawned here - the same step's other
+    /// items appear on their own station panels. Runs its refresh in SetStep, so
+    /// hidden panels stay correctly in sync even while another station is visible.
+    /// </summary>
+    public abstract class IngredientDisplayStationBase : StationControllerBase, ICollectibleStation
+    {
+        [Header("Collectible Item Display")]
+        [SerializeField] protected Transform itemContainer;
+        [SerializeField] protected CollectibleItemView itemViewPrefab;
+ 
+        private readonly List<CollectibleItemView> spawnedViews = new List<CollectibleItemView>();
+        private int totalRequiredCount;
+        private int collectedCount;
+ 
+        public bool AllRequiredItemsCollected => collectedCount >= totalRequiredCount;
+        public event Action OnCollectionChanged;
+ 
+        protected override void RefreshUI()
+        {
+            ClearSpawnedViews();
+            collectedCount = 0;
+            totalRequiredCount = 0;
+ 
+            if (currentStep != null && itemContainer != null && itemViewPrefab != null)
+            {
+                foreach (var ingredient in currentStep.requiredIngredients)
+                {
+                    if (ingredient.sourceStation != StationType) continue;
+                    SpawnItem(ingredient.icon, ingredient.ingredientName);
+                }
+ 
+                if (!string.IsNullOrEmpty(currentStep.requiredTool.toolId) &&
+                    currentStep.requiredTool.sourceStation == StationType)
+                {
+                    SpawnItem(currentStep.requiredTool.icon, currentStep.requiredTool.toolName);
+                }
+            }
+ 
+            // Notifying even with zero items matters: it's how GameplayManager learns
+            // this station is vacuously satisfied for a step it has nothing to do with.
+            OnCollectionChanged?.Invoke();
+        }
+ 
+        private void SpawnItem(Sprite icon, string displayName)
+        {
+            totalRequiredCount++;
+            CollectibleItemView view = Instantiate(itemViewPrefab, itemContainer);
+            view.Setup(icon, displayName, HandleItemCollected);
+            spawnedViews.Add(view);
+        }
+ 
+        private void HandleItemCollected()
+        {
+            collectedCount++;
+            OnCollectionChanged?.Invoke();
+        }
+ 
+        private void ClearSpawnedViews()
+        {
+            foreach (var view in spawnedViews)
+            {
+                if (view != null) Destroy(view.gameObject);
+            }
+            spawnedViews.Clear();
+        }
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Gameplay/Stations/KitchenStationInteractable.cs">
+using UnityEngine;
+using MasakanTradisional.Data;
+
+namespace MasakanTradisional.Gameplay
+{
+    /// <summary>
+    /// Attach this to any 3D kitchen appliance that has a Collider.
+    /// Identifies which KitchenStationType this object represents so that
+    /// KitchenInputController can route a raycast hit to the correct station.
+    ///
+    /// Usage:
+    ///   1. Add this component to the root GameObject of a 3D appliance
+    ///      (e.g. FreeRefrigerator, StoveWithExtractorHood, FreeShelf, etc.)
+    ///   2. Make sure at least one Collider exists on the object or a child.
+    ///   3. Set stationType to the matching KitchenStationType enum value.
+    /// </summary>
+    public class KitchenStationInteractable : MonoBehaviour
+    {
+        [Tooltip("Which gameplay station this 3D object represents.")]
+        [SerializeField] private KitchenStationType stationType;
+
+        [Tooltip("Optional. If set, renders a highlight effect when the pointer hovers over this object. " +
+                 "Leave null to skip hover feedback.")]
+        [SerializeField] private Renderer[] highlightRenderers;
+
+        [Tooltip("Tint color applied to highlightRenderers on hover.")]
+        [SerializeField] private Color hoverTint = new Color(1f, 1f, 0.6f, 1f);
+
+        private Color[] _originalColors;
+        private bool _isHovered;
+
+        // -------------------------------------------------------------------------
+        public KitchenStationType StationType => stationType;
+
+        // -------------------------------------------------------------------------
+        private void Awake()
+        {
+            // Cache original colors for highlight restore
+            if (highlightRenderers != null && highlightRenderers.Length > 0)
+            {
+                _originalColors = new Color[highlightRenderers.Length];
+                for (int i = 0; i < highlightRenderers.Length; i++)
+                {
+                    if (highlightRenderers[i] != null)
+                        _originalColors[i] = highlightRenderers[i].material.color;
+                }
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // Called by KitchenInputController when the player taps/clicks this object
+        // -------------------------------------------------------------------------
+
+        /// <summary>
+        /// Routes the tap to the GameplayManager to navigate to this station.
+        /// </summary>
+        public void OnTapped(GameplayManager gameplayManager)
+        {
+            if (gameplayManager == null)
+            {
+                Debug.LogWarning($"[KitchenStationInteractable] {name}: gameplayManager reference is null.");
+                return;
+            }
+
+            gameplayManager.NavigateToStation(stationType);
+        }
+
+        // -------------------------------------------------------------------------
+        // Optional hover highlight (called by KitchenInputController on desktop)
+        // -------------------------------------------------------------------------
+
+        public void SetHover(bool hovered)
+        {
+            if (_isHovered == hovered) return;
+            _isHovered = hovered;
+
+            if (highlightRenderers == null || highlightRenderers.Length == 0) return;
+
+            for (int i = 0; i < highlightRenderers.Length; i++)
+            {
+                if (highlightRenderers[i] == null) continue;
+                highlightRenderers[i].material.color = hovered ? hoverTint : _originalColors[i];
+            }
+        }
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Gameplay/KitchenInputController.cs">
+using UnityEngine;
+using UnityEngine.EventSystems;
+
+namespace MasakanTradisional.Gameplay
+{
+    /// <summary>
+    /// Handles touch/mouse input for the kitchen overview.
+    /// Casts a ray from the main camera on every tap/click and routes the hit
+    /// to the tapped KitchenStationInteractable (if any).
+    ///
+    /// Behaviour rules:
+    ///   - Input is only processed when StationCameraRig.IsOverview is true.
+    ///   - Taps that land on a UI element (Canvas) are ignored via EventSystem check.
+    ///   - On desktop, moving the mouse over an interactable shows a hover highlight.
+    ///
+    /// Wire via Inspector:
+    ///   mainCamera      → Main Camera (auto-found if null)
+    ///   gameplayManager → GameplayManager in the scene
+    ///   cameraRig       → StationCameraRig in the scene
+    /// </summary>
+    public class KitchenInputController : MonoBehaviour
+    {
+        [Header("References")]
+        [Tooltip("Leave null to auto-find Camera.main.")]
+        [SerializeField] private Camera mainCamera;
+        [SerializeField] private GameplayManager gameplayManager;
+        [SerializeField] private StationCameraRig cameraRig;
+
+        [Header("Raycast Settings")]
+        [SerializeField] private float raycastDistance = 200f;
+        [SerializeField] private LayerMask interactableLayerMask = ~0; // Everything by default
+
+        // Hover tracking (desktop only)
+        private KitchenStationInteractable _hoveredInteractable;
+
+        // -------------------------------------------------------------------------
+        private void Awake()
+        {
+            if (mainCamera == null)
+                mainCamera = Camera.main;
+
+            if (mainCamera == null)
+                Debug.LogError("[KitchenInputController] No camera found. Assign mainCamera in the Inspector.");
+        }
+
+        // -------------------------------------------------------------------------
+        private void Update()
+        {
+            // Only act in overview mode
+            if (cameraRig != null && !cameraRig.IsOverview) return;
+
+            HandleHover();
+            HandleTapOrClick();
+        }
+
+        // -------------------------------------------------------------------------
+        // Hover (desktop only — skipped on mobile to save raycasts)
+        // -------------------------------------------------------------------------
+
+        private void HandleHover()
+        {
+#if UNITY_EDITOR || UNITY_STANDALONE
+            KitchenStationInteractable hitInteractable = null;
+
+            if (!IsPointerOverUI(Input.mousePosition))
+            {
+                Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
+                if (Physics.Raycast(ray, out RaycastHit hit, raycastDistance, interactableLayerMask))
+                {
+                    hitInteractable = hit.collider.GetComponentInParent<KitchenStationInteractable>();
+                }
+            }
+
+            if (hitInteractable != _hoveredInteractable)
+            {
+                _hoveredInteractable?.SetHover(false);
+                _hoveredInteractable = hitInteractable;
+                _hoveredInteractable?.SetHover(true);
+            }
+#endif
+        }
+
+        // -------------------------------------------------------------------------
+        // Tap / Click
+        // -------------------------------------------------------------------------
+
+        private void HandleTapOrClick()
+        {
+            if (!IsTapOrClickDown(out Vector2 screenPos)) return;
+            if (IsPointerOverUI(screenPos)) return;
+
+            TryInteract(screenPos);
+        }
+
+        private bool IsTapOrClickDown(out Vector2 screenPos)
+        {
+            // Touch input (mobile / Unity Remote)
+            if (Input.touchCount > 0)
+            {
+                Touch touch = Input.GetTouch(0);
+                if (touch.phase == TouchPhase.Began)
+                {
+                    screenPos = touch.position;
+                    return true;
+                }
+            }
+            // Mouse input (editor / standalone)
+            else if (Input.GetMouseButtonDown(0))
+            {
+                screenPos = Input.mousePosition;
+                return true;
+            }
+
+            screenPos = Vector2.zero;
+            return false;
+        }
+
+        private void TryInteract(Vector2 screenPos)
+        {
+            if (mainCamera == null) return;
+
+            Ray ray = mainCamera.ScreenPointToRay(screenPos);
+
+            if (Physics.Raycast(ray, out RaycastHit hit, raycastDistance, interactableLayerMask))
+            {
+                KitchenStationInteractable interactable = hit.collider.GetComponentInParent<KitchenStationInteractable>();
+                if (interactable != null)
+                {
+                    Debug.Log($"[KitchenInputController] Tapped: {interactable.gameObject.name} → {interactable.StationType}");
+                    interactable.OnTapped(gameplayManager);
+                }
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // Helpers
+        // -------------------------------------------------------------------------
+
+        /// <summary>
+        /// Returns true if the given screen position is over a UI canvas element.
+        /// Handles both mouse and touch event systems.
+        /// </summary>
+        private bool IsPointerOverUI(Vector2 screenPos)
+        {
+            if (EventSystem.current == null) return false;
+
+            // Touch: check by finger ID
+            if (Input.touchCount > 0)
+                return EventSystem.current.IsPointerOverGameObject(Input.GetTouch(0).fingerId);
+
+            // Mouse
+            return EventSystem.current.IsPointerOverGameObject();
+        }
+    }
+}
+</file>
+
+<file path="Assets/_Project/Scripts/Gameplay/StationCameraRig.cs">
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+using Cinemachine;
+using MasakanTradisional.Data;
+
+namespace MasakanTradisional.Gameplay
+{
+    /// <summary>
+    /// Serializable pairing of a KitchenStationType to a CinemachineVirtualCamera,
+    /// so the mapping can be configured in the Inspector.
+    /// </summary>
+    [Serializable]
+    public struct StationCameraEntry
+    {
+        public KitchenStationType stationType;
+        public CinemachineVirtualCamera virtualCamera;
+    }
+
+    /// <summary>
+    /// Manages Cinemachine virtual camera switching between the kitchen overview
+    /// and individual station close-up cameras.
+    ///
+    /// Switching is done via priority:
+    ///   - Active camera  → activePriority  (default 11)
+    ///   - Inactive cameras → inactivePriority (default  9)
+    /// CinemachineBrain on the Main Camera will blend automatically.
+    ///
+    /// Wire via Inspector:
+    ///   overviewCamera  → the "whole kitchen" fixed shot vcam
+    ///   stationCameras  → one entry per KitchenStationType
+    /// </summary>
+    public class StationCameraRig : MonoBehaviour
+    {
+        [Header("Overview Camera")]
+        [Tooltip("The Cinemachine Virtual Camera showing the whole kitchen.")]
+        [SerializeField] private CinemachineVirtualCamera overviewCamera;
+
+        [Header("Station Cameras")]
+        [Tooltip("One entry per station. Leave virtualCamera null if that station has no dedicated shot.")]
+        [SerializeField] private List<StationCameraEntry> stationCameras = new List<StationCameraEntry>();
+
+        [Header("Priority Settings")]
+        [SerializeField] private int activePriority = 11;
+        [SerializeField] private int inactivePriority = 9;
+
+        // --- State ---
+        private Dictionary<KitchenStationType, CinemachineVirtualCamera> _cameraMap;
+
+        /// <summary>True while the overview shot is live (no station is zoomed in).</summary>
+        public bool IsOverview { get; private set; } = true;
+
+        // --- Events ---
+        /// <summary>Fired when the camera returns to the overview shot.</summary>
+        public event Action OnReturnedToOverview;
+
+        /// <summary>Fired when the camera zooms into a station.</summary>
+        public event Action<KitchenStationType> OnZoomedToStation;
+
+        // -------------------------------------------------------------------------
+        private void Awake()
+        {
+            // Build the runtime lookup
+            _cameraMap = new Dictionary<KitchenStationType, CinemachineVirtualCamera>();
+            foreach (StationCameraEntry entry in stationCameras)
+            {
+                if (entry.virtualCamera != null)
+                    _cameraMap[entry.stationType] = entry.virtualCamera;
+            }
+
+            // Start in overview
+            SetAllToInactivePriority();
+            if (overviewCamera != null)
+                overviewCamera.Priority = activePriority;
+
+            IsOverview = true;
+        }
+
+        // -------------------------------------------------------------------------
+        // Public API
+        // -------------------------------------------------------------------------
+
+        /// <summary>
+        /// Raises the given station's virtual camera to active priority.
+        /// CinemachineBrain will blend to it automatically.
+        /// If no vcam is registered for this station the overview remains active.
+        /// </summary>
+        public void ZoomToStation(KitchenStationType station)
+        {
+            SetAllToInactivePriority();
+
+            if (_cameraMap.TryGetValue(station, out CinemachineVirtualCamera vcam) && vcam != null)
+            {
+                vcam.Priority = activePriority;
+                IsOverview = false;
+                OnZoomedToStation?.Invoke(station);
+            }
+            else
+            {
+                // No dedicated camera for this station — fall back to overview
+                if (overviewCamera != null)
+                    overviewCamera.Priority = activePriority;
+
+                IsOverview = true;
+                Debug.LogWarning($"[StationCameraRig] No virtual camera registered for {station}. Staying in overview.");
+            }
+        }
+
+        /// <summary>
+        /// Returns the Cinemachine brain to the overview shot.
+        /// </summary>
+        public void ReturnToOverview()
+        {
+            SetAllToInactivePriority();
+
+            if (overviewCamera != null)
+                overviewCamera.Priority = activePriority;
+
+            IsOverview = true;
+            OnReturnedToOverview?.Invoke();
+        }
+
+        // -------------------------------------------------------------------------
+        // Helpers
+        // -------------------------------------------------------------------------
+
+        private void SetAllToInactivePriority()
+        {
+            if (overviewCamera != null)
+                overviewCamera.Priority = inactivePriority;
+
+            foreach (var kvp in _cameraMap)
+            {
+                if (kvp.Value != null)
+                    kvp.Value.Priority = inactivePriority;
+            }
+        }
+    }
+}
+</file>
 
 <file path="Assets/_Project/Audio/AudioManager.cs">
 using UnityEngine;
@@ -270,6 +1426,8 @@ namespace MasakanTradisional.Data
 </file>
 
 <file path="Assets/_Project/Scripts/Gameplay/Stations/CounterController.cs">
+using MasakanTradisional.Data;
+ 
 namespace MasakanTradisional.Gameplay.Stations
 {
     /// <summary>
@@ -283,6 +1441,8 @@ namespace MasakanTradisional.Gameplay.Stations
 </file>
 
 <file path="Assets/_Project/Scripts/Gameplay/Stations/FridgeController.cs">
+using MasakanTradisional.Data;
+ 
 namespace MasakanTradisional.Gameplay.Stations
 {
     /// <summary>
@@ -306,8 +1466,9 @@ namespace MasakanTradisional.Gameplay.Stations
 {
     /// <summary>
     /// Shared behaviour for any station that exposes an adjustable heat value and a
-    /// start/pause cooking timer (Stove, Oven). New heat-based stations only need to
-    /// subclass this and set StationType - no duplicated slider/timer code.
+    /// start/pause cooking timer (Stove, Oven). Heat/timer state resets in SetStep
+    /// (once per step) rather than Show (every time the panel is viewed) - so
+    /// browsing to another station and back no longer wipes cooking progress.
     /// </summary>
     public abstract class HeatStationControllerBase : StationControllerBase, IHeatStationController
     {
@@ -342,9 +1503,9 @@ namespace MasakanTradisional.Gameplay.Stations
             UpdateTimerText();
         }
  
-        public override void Activate(CookingStep step)
+        public override void SetStep(CookingStep step)
         {
-            base.Activate(step); // caches currentStep, shows panel, calls RefreshUI()
+            base.SetStep(step); // caches currentStep, calls RefreshUI()
  
             if (heatSlider != null)
             {
@@ -387,45 +1548,6 @@ namespace MasakanTradisional.Gameplay.Stations
 }
 </file>
 
-<file path="Assets/_Project/Scripts/Gameplay/Stations/IngridientDisplayStationBase.cs">
-using System.Text;
-using TMPro;
-using UnityEngine;
- 
-namespace MasakanTradisional.Gameplay.Stations
-{
-    /// <summary>
-    /// Shared base for simple stations that just need to display the current step's
-    /// required ingredients (Shelves, Fridge, Counter). Extend a concrete subclass
-    /// with drag-and-drop or interaction logic later without touching this base.
-    /// </summary>
-    public abstract class IngredientDisplayStationBase : StationControllerBase
-    {
-        [Header("Ingredient Display")]
-        [SerializeField] protected TMP_Text ingredientListText;
- 
-        protected override void RefreshUI()
-        {
-            if (ingredientListText == null || currentStep == null) return;
-            ingredientListText.text = BuildIngredientListText();
-        }
- 
-        private string BuildIngredientListText()
-        {
-            if (currentStep.requiredIngredients == null || currentStep.requiredIngredients.Count == 0)
-                return "No ingredients required for this step.";
- 
-            var lines = new StringBuilder();
-            foreach (var ing in currentStep.requiredIngredients)
-            {
-                lines.AppendLine($"- {ing.ingredientName} ({ing.amount} {ing.unit})");
-            }
-            return lines.ToString();
-        }
-    }
-}
-</file>
-
 <file path="Assets/_Project/Scripts/Gameplay/Stations/IStationController.cs">
 using MasakanTradisional.Data;
  
@@ -433,23 +1555,27 @@ namespace MasakanTradisional.Gameplay.Stations
 {
     /// <summary>
     /// Contract for any workstation panel (Shelves, Fridge, Counter, Stove, Oven, ...).
-    /// GameplayManager talks to stations only through this interface, never through a
-    /// concrete type - that's what lets you add a new station without editing GameplayManager.
+    /// GameplayManager talks to stations only through this interface.
+    ///
+    /// SetStep and Show/Hide are intentionally separate: SetStep is called on EVERY
+    /// registered station whenever the current recipe step changes, even if that
+    /// station's panel isn't currently visible. Show/Hide only toggle visibility.
+    /// This keeps hidden panels in sync (e.g. collection state) and stops browsing
+    /// between stations from resetting a station's in-progress state (e.g. a
+    /// stove's heat/timer) just because the player looked away and came back.
     /// </summary>
     public interface IStationController
     {
         KitchenStationType StationType { get; }
  
-        /// <summary>
-        /// Called when this station's panel becomes the visible/active one.
-        /// Should refresh all UI to reflect the given step.
-        /// </summary>
-        void Activate(CookingStep step);
+        /// <summary>Sync this station's internal state to the given step. Called for every station on every step change, regardless of visibility.</summary>
+        void SetStep(CookingStep step);
  
-        /// <summary>
-        /// Called when this station's panel is hidden (player navigated to another station).
-        /// </summary>
-        void Deactivate();
+        /// <summary>Make this station's panel visible.</summary>
+        void Show();
+ 
+        /// <summary>Hide this station's panel.</summary>
+        void Hide();
     }
  
     /// <summary>
@@ -472,8 +1598,9 @@ namespace MasakanTradisional.Gameplay.Stations
 {
     /// <summary>
     /// Oven workstation: Bake steps. Reuses all heat/timer logic from
-    /// HeatStationControllerBase for free. Oven-specific extras (door animation,
-    /// preheat delay, etc.) can be added here without touching Stove or the base class.
+    /// HeatStationControllerBase. Door animation now hooks into Show/Hide (pure
+    /// visibility) rather than SetStep, so it only reacts to the player actually
+    /// looking at the oven, not to step changes happening elsewhere.
     /// </summary>
     public class OvenController : HeatStationControllerBase
     {
@@ -482,15 +1609,15 @@ namespace MasakanTradisional.Gameplay.Stations
         [Header("Oven Extras (optional)")]
         [SerializeField] private Animator ovenDoorAnimator;
  
-        public override void Activate(CookingStep step)
+        public override void Show()
         {
-            base.Activate(step);
+            base.Show();
             if (ovenDoorAnimator != null) ovenDoorAnimator.SetBool("IsOpen", true);
         }
  
-        public override void Deactivate()
+        public override void Hide()
         {
-            base.Deactivate();
+            base.Hide();
             if (ovenDoorAnimator != null) ovenDoorAnimator.SetBool("IsOpen", false);
         }
     }
@@ -498,6 +1625,8 @@ namespace MasakanTradisional.Gameplay.Stations
 </file>
 
 <file path="Assets/_Project/Scripts/Gameplay/Stations/ShelvesController.cs">
+using MasakanTradisional.Data;
+ 
 namespace MasakanTradisional.Gameplay.Stations
 {
     /// <summary>
@@ -517,8 +1646,8 @@ using MasakanTradisional.Data;
 namespace MasakanTradisional.Gameplay.Stations
 {
     /// <summary>
-    /// Base class for all workstation panel controllers. Handles panel visibility and
-    /// step caching; concrete stations override RefreshUI() to bind their own widgets.
+    /// Base class for all workstation panel controllers. Handles the SetStep/Show/Hide
+    /// split; concrete stations override RefreshUI() to bind their own widgets.
     /// </summary>
     public abstract class StationControllerBase : MonoBehaviour, IStationController
     {
@@ -529,21 +1658,26 @@ namespace MasakanTradisional.Gameplay.Stations
  
         public abstract KitchenStationType StationType { get; }
  
-        public virtual void Activate(CookingStep step)
+        public virtual void SetStep(CookingStep step)
         {
             currentStep = step;
-            if (panelRoot != null) panelRoot.SetActive(true);
             RefreshUI();
         }
  
-        public virtual void Deactivate()
+        public virtual void Show()
+        {
+            if (panelRoot != null) panelRoot.SetActive(true);
+        }
+ 
+        public virtual void Hide()
         {
             if (panelRoot != null) panelRoot.SetActive(false);
         }
  
         /// <summary>
         /// Override to bind currentStep's data (ingredients, instructions, icons, etc.)
-        /// to this station's own UI widgets. Called every time Activate() runs.
+        /// to this station's own UI widgets. Called every time SetStep() runs -
+        /// i.e. once per step, not once per time the panel is shown.
         /// </summary>
         protected virtual void RefreshUI() { }
     }
@@ -551,6 +1685,8 @@ namespace MasakanTradisional.Gameplay.Stations
 </file>
 
 <file path="Assets/_Project/Scripts/Gameplay/Stations/StoveController.cs">
+using MasakanTradisional.Data;
+ 
 namespace MasakanTradisional.Gameplay.Stations
 {
     /// <summary>
@@ -812,9 +1948,9 @@ namespace MasakanTradisional.Gameplay
     /// <summary>
     /// Coordinator for Gameplay.unity. Owns recipe/step progression, fuzzy scoring,
     /// and result presentation. Delegates all per-station UI/interaction to
-    /// IStationController implementations - this class never touches a slider,
-    /// a heat value, or a timer directly. Adding a new station = write a controller
-    /// + assign it in the inspector, no edits needed here beyond that assignment.
+    /// IStationController implementations. Also gates step completion on
+    /// ICollectibleStation.AllRequiredItemsCollected, which is what actually gives
+    /// KitchenPrepState a gameplay purpose instead of just being a logged state.
     /// </summary>
     public class GameplayManager : MonoBehaviour
     {
@@ -836,6 +1972,12 @@ namespace MasakanTradisional.Gameplay
         [SerializeField] private Button navStoveButton;
         [SerializeField] private Button navOvenButton;
  
+        [Header("Camera Rig")]
+        [Tooltip("Manages Cinemachine virtual camera switching between overview and station views.")]
+        [SerializeField] private StationCameraRig cameraRig;
+        [Tooltip("Button shown in station view to return to the main kitchen overview.")]
+        [SerializeField] private Button backToOverviewButton;
+ 
         [Header("Step Information UI")]
         [SerializeField] private TMP_Text recipeNameText;
         [SerializeField] private TMP_Text stepTitleText;
@@ -845,8 +1987,10 @@ namespace MasakanTradisional.Gameplay
         [SerializeField] private TMP_Text targetToolText;
  
         [Header("Step Completion")]
-        [Tooltip("Single persistent 'Finish Step' button, always available regardless of which station panel is currently displayed.")]
+        [Tooltip("Single persistent 'Finish Step' button, always available regardless of which station panel is currently displayed. Becomes interactable only once all required items for the step are collected.")]
         [SerializeField] private Button finishStepButton;
+        [Tooltip("Optional. Shown while items are still missing, hidden once the player can finish the step.")]
+        [SerializeField] private TMP_Text collectionHintText;
  
         [Header("Result / Evaluation Modal")]
         [SerializeField] private GameObject resultModal;
@@ -879,10 +2023,21 @@ namespace MasakanTradisional.Gameplay
             StartRecipeSession();
         }
  
+        private void OnDestroy()
+        {
+            foreach (var kvp in stationControllers)
+            {
+                if (kvp.Value is ICollectibleStation collectible)
+                {
+                    collectible.OnCollectionChanged -= RefreshFinishButtonAvailability;
+                }
+            }
+        }
+ 
         /// <summary>
-        /// Registers every assigned station controller by its StationType.
-        /// Leaving a slot unassigned (e.g. while incrementally building the scene)
-        /// simply means that station is skipped, not a null-ref crash.
+        /// Registers every assigned station controller by its StationType, and
+        /// subscribes to collection updates from any that implement ICollectibleStation.
+        /// Leaving a slot unassigned simply means that station is skipped, not a crash.
         /// </summary>
         private void BuildStationRegistry()
         {
@@ -899,6 +2054,11 @@ namespace MasakanTradisional.Gameplay
         {
             if (controller == null) return;
             stationControllers[controller.StationType] = controller;
+ 
+            if (controller is ICollectibleStation collectible)
+            {
+                collectible.OnCollectionChanged += RefreshFinishButtonAvailability;
+            }
         }
  
         private void InitializeRecipeData()
@@ -932,6 +2092,7 @@ namespace MasakanTradisional.Gameplay
  
             if (retryButton != null) retryButton.onClick.AddListener(RestartCookingSession);
             if (mainMenuButton != null) mainMenuButton.onClick.AddListener(ReturnToMainMenu);
+            if (backToOverviewButton != null) backToOverviewButton.onClick.AddListener(ReturnToOverview);
         }
  
         public void StartRecipeSession()
@@ -956,8 +2117,13 @@ namespace MasakanTradisional.Gameplay
             if (activeRecipe == null || index < 0 || index >= activeRecipe.StepCount) return;
  
             CookingStep step = activeRecipe.GetStep(index);
+            KitchenStationType homeStation = RecommendStationForStep(step.actionType);
  
-            if (GameStateMachine.Instance != null && IsHeatBasedAction(step.actionType))
+            // Ask the station itself whether it's heat-based, instead of maintaining
+            // a second switch statement that has to be kept in sync with the first.
+            if (GameStateMachine.Instance != null &&
+                stationControllers.TryGetValue(homeStation, out IStationController homeController) &&
+                homeController is IHeatStationController)
             {
                 GameStateMachine.Instance.GoToCooking();
             }
@@ -968,36 +2134,57 @@ namespace MasakanTradisional.Gameplay
             if (stepIllustrationImage != null) stepIllustrationImage.sprite = step.stepIllustration;
             if (targetToolText != null) targetToolText.text = $"Required Tool: {(string.IsNullOrEmpty(step.requiredTool.toolName) ? "None" : step.requiredTool.toolName)}";
  
-            // Auto-navigate to the recommended station for this step type
-            SwitchStation(RecommendStationForStep(step.actionType));
+            // Sync EVERY station to the new step, even hidden ones, so collection
+            // state and heat/timer resets are correct no matter which panel the
+            // player looks at first.
+            foreach (var kvp in stationControllers)
+            {
+                kvp.Value.SetStep(step);
+            }
+ 
+            SwitchStation(homeStation);
+            RefreshFinishButtonAvailability();
         }
  
         /// <summary>
-        /// Activates the target station's controller and deactivates every other
-        /// registered station. Nav buttons call this for free browsing; LoadStep
-        /// calls it to auto-navigate to a step's home station.
+        /// Pure visibility toggle - shows the target station's panel and hides every
+        /// other registered station. Does not touch step data (see SetStep in LoadStep).
+        /// Called internally by LoadStep (no camera change) and by NavigateToStation (with camera change).
         /// </summary>
         public void SwitchStation(KitchenStationType targetStation)
         {
             AudioManager.Instance?.PlayButtonSFX();
  
-            CookingStep step = (activeRecipe != null && currentStepIndex < activeRecipe.StepCount)
-                ? activeRecipe.GetStep(currentStepIndex)
-                : null;
- 
             foreach (var kvp in stationControllers)
             {
-                if (kvp.Key == targetStation)
-                {
-                    kvp.Value.Activate(step);
-                }
-                else
-                {
-                    kvp.Value.Deactivate();
-                }
+                if (kvp.Key == targetStation) kvp.Value.Show();
+                else kvp.Value.Hide();
             }
  
             currentStation = targetStation;
+        }
+ 
+        /// <summary>
+        /// Called by KitchenStationInteractable (world-space tap) when the player taps
+        /// an appliance in the overview. Zooms the Cinemachine camera to the station
+        /// and then opens its panel. Use this instead of SwitchStation() for player-
+        /// initiated navigation — SwitchStation() alone does not change the camera.
+        /// </summary>
+        public void NavigateToStation(KitchenStationType targetStation)
+        {
+            cameraRig?.ZoomToStation(targetStation);
+            SwitchStation(targetStation);
+        }
+ 
+        /// <summary>
+        /// Returns the Cinemachine camera to the overview shot.
+        /// Wired to the Back button in the station HUD.
+        /// Does not close the current station panel — the overview is just for navigation.
+        /// </summary>
+        public void ReturnToOverview()
+        {
+            AudioManager.Instance?.PlayButtonSFX();
+            cameraRig?.ReturnToOverview();
         }
  
         private KitchenStationType RecommendStationForStep(StepActionType actionType)
@@ -1023,17 +2210,47 @@ namespace MasakanTradisional.Gameplay
             }
         }
  
-        private bool IsHeatBasedAction(StepActionType actionType)
+        /// <summary>
+        /// True only when every registered ICollectibleStation reports its items
+        /// collected for the current step (stations with no items for this step are
+        /// vacuously satisfied, so a pure-Stove step never gets blocked by an
+        /// empty Shelves panel).
+        /// </summary>
+        private bool AreAllRequiredItemsCollected()
         {
-            return actionType == StepActionType.Saute ||
-                   actionType == StepActionType.Boil ||
-                   actionType == StepActionType.Simmer ||
-                   actionType == StepActionType.Fry ||
-                   actionType == StepActionType.Bake;
+            foreach (var kvp in stationControllers)
+            {
+                if (kvp.Value is ICollectibleStation collectible && !collectible.AllRequiredItemsCollected)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+ 
+        private void RefreshFinishButtonAvailability()
+        {
+            bool ready = AreAllRequiredItemsCollected();
+ 
+            if (finishStepButton != null) finishStepButton.interactable = ready;
+            if (collectionHintText != null)
+            {
+                if (!ready)
+                {
+                    collectionHintText.text = "Collect all ingredients first!";
+                }
+                collectionHintText.gameObject.SetActive(!ready);
+            }
         }
  
         public void CompleteCurrentStep()
         {
+            if (!AreAllRequiredItemsCollected())
+            {
+                Debug.LogWarning("[GameplayManager] Blocked: not all required items are collected yet.");
+                return;
+            }
+ 
             AudioManager.Instance?.PlayButtonSFX();
  
             CookingStep step = activeRecipe.GetStep(currentStepIndex);
@@ -1392,21 +2609,6 @@ namespace MasakanTradisional.Core.FSM
         {
             Debug.Log("[CookingState] Exiting Cooking phase.");
         }
-    }
-}
-</file>
-
-<file path="Assets/_Project/Scripts/Gameplay/KitchenStationType.cs">
-// Moved out of GameplayManager.cs so it's not buried in the coordinator file.
-namespace MasakanTradisional.Gameplay
-{
-    public enum KitchenStationType
-    {
-        Shelves,
-        Fridge,
-        Counter,
-        Stove,
-        Oven
     }
 }
 </file>
@@ -10471,7 +11673,7 @@ public class Readme : ScriptableObject
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-
+ 
 namespace MasakanTradisional.Data
 {
     public enum RecipeDifficulty
@@ -10481,7 +11683,7 @@ namespace MasakanTradisional.Data
         Hard,
         Expert
     }
-
+ 
     public enum StepActionType
     {
         Prepare,
@@ -10495,7 +11697,7 @@ namespace MasakanTradisional.Data
         Bake,
         PlateAndGarnish
     }
-
+ 
     [Serializable]
     public struct IngredientData
     {
@@ -10505,8 +11707,11 @@ namespace MasakanTradisional.Data
         public float amount;
         public string unit; // e.g., "g", "ml", "tbsp", "pcs"
         public bool isOptional;
+ 
+        [Tooltip("Which station panel the player must visit to collect this ingredient during Kitchen Prep.")]
+        public KitchenStationType sourceStation;
     }
-
+ 
     [Serializable]
     public struct ToolData
     {
@@ -10514,8 +11719,11 @@ namespace MasakanTradisional.Data
         public string toolName;
         public Sprite icon;
         public string toolType; // e.g., "Mortar & Pestle", "Wok", "Knife"
+ 
+        [Tooltip("Which station panel the player must visit to collect this tool during Kitchen Prep.")]
+        public KitchenStationType sourceStation;
     }
-
+ 
     [Serializable]
     public class CookingStep
     {
@@ -10525,26 +11733,26 @@ namespace MasakanTradisional.Data
         [TextArea(2, 4)]
         public string instruction;
         public StepActionType actionType;
-
+ 
         [Header("Requirements")]
         public ToolData requiredTool;
         public List<IngredientData> requiredIngredients = new List<IngredientData>();
-
+ 
         [Header("Execution Parameters")]
         public float timeLimitSeconds = 30f;
         public float targetTemperature; // Applicable for cooking steps
         public Sprite stepIllustration;
         public AudioClip stepSFX;
-
+ 
         [Header("Fuzzy Logic Overrides (Optional)")]
         [Tooltip("Optional step-specific Fuzzy Logic override asset. Overrides recipe default if assigned.")]
         public MasakanTradisional.Gameplay.Evaluation.FuzzyCookingData fuzzyData;
-
+ 
         [Header("Scoring Calibration")]
         [Range(0.5f, 2.0f)]
         public float scoreMultiplier = 1.0f;
     }
-
+ 
     [CreateAssetMenu(fileName = "NewRecipeData", menuName = "Masakan Tradisional/Data/Recipe Data")]
     public class RecipeData : ScriptableObject
     {
@@ -10552,36 +11760,36 @@ namespace MasakanTradisional.Data
         public string recipeId;               // e.g., "recipe_rendang"
         public string recipeName;             // e.g., "Rendang Padang"
         public string originRegion;           // e.g., "Padang, West Sumatra"
-        [TextArea(3, 5)] 
+        [TextArea(3, 5)]
         public string description;            // Cultural & culinary history
-
+ 
         [Header("Gameplay Configuration")]
         public RecipeDifficulty difficulty = RecipeDifficulty.Medium;
         public string gameplaySceneName = "Gameplay";      // e.g., "Cooking_Rendang"
         public Sprite recipeIcon;             // Thumbnail icon for UI card
         public Sprite dishBannerImage;        // High-res preview image
-
+ 
         [Header("Fuzzy Logic Configuration")]
         [Tooltip("Recipe-wide Fuzzy Logic configuration asset.")]
         [SerializeField] private MasakanTradisional.Gameplay.Evaluation.FuzzyCookingData defaultFuzzyData;
-
+ 
         [Header("Unlock Requirements")]
         public int starsRequiredToUnlock = 0; // Cumulative stars needed
         public RecipeData prerequisiteRecipe; // Optional: recipe required prior to this
-
+ 
         [Header("Cooking Specifications")]
         [SerializeField] private List<IngredientData> ingredients = new List<IngredientData>();
         [SerializeField] private List<ToolData> requiredTools = new List<ToolData>();
         [SerializeField] private List<CookingStep> stepSequence = new List<CookingStep>();
-
+ 
         // Public Accessors
         public MasakanTradisional.Gameplay.Evaluation.FuzzyCookingData DefaultFuzzyData => defaultFuzzyData;
         public IReadOnlyList<IngredientData> Ingredients => ingredients;
         public IReadOnlyList<ToolData> RequiredTools => requiredTools;
         public IReadOnlyList<CookingStep> StepSequence => stepSequence;
-
+ 
         public int StepCount => stepSequence.Count;
-
+ 
         public CookingStep GetStep(int index)
         {
             if (index >= 0 && index < stepSequence.Count)

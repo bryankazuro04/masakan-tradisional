@@ -4,8 +4,8 @@ using MasakanTradisional.Data;
 namespace MasakanTradisional.Gameplay.Stations
 {
     /// <summary>
-    /// Base class for all workstation panel controllers. Handles panel visibility and
-    /// step caching; concrete stations override RefreshUI() to bind their own widgets.
+    /// Base class for all workstation panel controllers. Handles the SetStep/Show/Hide
+    /// split; concrete stations override RefreshUI() to bind their own widgets.
     /// </summary>
     public abstract class StationControllerBase : MonoBehaviour, IStationController
     {
@@ -16,21 +16,26 @@ namespace MasakanTradisional.Gameplay.Stations
  
         public abstract KitchenStationType StationType { get; }
  
-        public virtual void Activate(CookingStep step)
+        public virtual void SetStep(CookingStep step)
         {
             currentStep = step;
-            if (panelRoot != null) panelRoot.SetActive(true);
             RefreshUI();
         }
  
-        public virtual void Deactivate()
+        public virtual void Show()
+        {
+            if (panelRoot != null) panelRoot.SetActive(true);
+        }
+ 
+        public virtual void Hide()
         {
             if (panelRoot != null) panelRoot.SetActive(false);
         }
  
         /// <summary>
         /// Override to bind currentStep's data (ingredients, instructions, icons, etc.)
-        /// to this station's own UI widgets. Called every time Activate() runs.
+        /// to this station's own UI widgets. Called every time SetStep() runs -
+        /// i.e. once per step, not once per time the panel is shown.
         /// </summary>
         protected virtual void RefreshUI() { }
     }

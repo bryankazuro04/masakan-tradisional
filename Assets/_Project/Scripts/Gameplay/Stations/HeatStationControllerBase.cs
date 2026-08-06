@@ -8,8 +8,9 @@ namespace MasakanTradisional.Gameplay.Stations
 {
     /// <summary>
     /// Shared behaviour for any station that exposes an adjustable heat value and a
-    /// start/pause cooking timer (Stove, Oven). New heat-based stations only need to
-    /// subclass this and set StationType - no duplicated slider/timer code.
+    /// start/pause cooking timer (Stove, Oven). Heat/timer state resets in SetStep
+    /// (once per step) rather than Show (every time the panel is viewed) - so
+    /// browsing to another station and back no longer wipes cooking progress.
     /// </summary>
     public abstract class HeatStationControllerBase : StationControllerBase, IHeatStationController
     {
@@ -44,9 +45,9 @@ namespace MasakanTradisional.Gameplay.Stations
             UpdateTimerText();
         }
  
-        public override void Activate(CookingStep step)
+        public override void SetStep(CookingStep step)
         {
-            base.Activate(step); // caches currentStep, shows panel, calls RefreshUI()
+            base.SetStep(step); // caches currentStep, calls RefreshUI()
  
             if (heatSlider != null)
             {

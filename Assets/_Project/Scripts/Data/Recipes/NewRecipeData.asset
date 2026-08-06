@@ -12,11 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 72baf9f4e369a24228355244f6dcf676, type: 3}
   m_Name: NewRecipeData
   m_EditorClassIdentifier: 
-  recipeId: 
-  recipeName: 
-  originRegion: 
-  description: 
-  difficulty: 1
+  recipeId: recipe_soto_ayam
+  recipeName: Soto Ayam Kudus
+  originRegion: Kudus, Central Java
+  description: An aromatic yellow chicken soup with savory broth, shredded chicken, glass noodles, and boiled eggs.
+  difficulty: 0
   gameplaySceneName: Gameplay
   recipeIcon: {fileID: 0}
   dishBannerImage: {fileID: 0}
@@ -24,31 +24,122 @@ MonoBehaviour:
   starsRequiredToUnlock: 0
   prerequisiteRecipe: {fileID: 0}
   ingredients:
-  - ingredientId: 
-    ingredientName: 
+  - ingredientId: ing_chicken
+    ingredientName: Daging Ayam (Chicken)
     icon: {fileID: 0}
-    amount: 0
-    unit: 
+    amount: 400
+    unit: g
     isOptional: 0
-  requiredTools:
-  - toolId: 
-    toolName: 
+    sourceStation: 1
+  - ingredientId: ing_broth
+    ingredientName: Kuah Kaldu (Broth Base)
     icon: {fileID: 0}
-    toolType: 
+    amount: 500
+    unit: ml
+    isOptional: 0
+    sourceStation: 1
+  - ingredientId: ing_yellow_bumbu
+    ingredientName: Bumbu Kuning (Yellow Spice)
+    icon: {fileID: 0}
+    amount: 100
+    unit: g
+    isOptional: 0
+    sourceStation: 1
+  - ingredientId: ing_noodles_egg
+    ingredientName: Sohun & Telur Rebus (Noodles & Egg)
+    icon: {fileID: 0}
+    amount: 100
+    unit: g
+    isOptional: 0
+    sourceStation: 0
+  requiredTools:
+  - toolId: tool_knife
+    toolName: Pisau Dapur (Chef Knife)
+    icon: {fileID: 0}
+    toolType: Knife
+    sourceStation: 2
+  - toolId: tool_pot
+    toolName: Panci Sup (Soup Pot)
+    icon: {fileID: 0}
+    toolType: Pot
+    sourceStation: 3
   stepSequence:
-  - stepId: 
-    stepTitle: 
-    instruction: 
+  - stepId: step_1
+    stepTitle: Persiapan Ayam & Pelengkap
+    instruction: Ambil daging ayam dari kulkas dan siapkan sohun serta telur dari rak penyimpanan.
     actionType: 0
     requiredTool:
-      toolId: 
-      toolName: 
+      toolId: tool_knife
+      toolName: Pisau Dapur (Chef Knife)
       icon: {fileID: 0}
-      toolType: 
-    requiredIngredients: []
-    timeLimitSeconds: 0
+      toolType: Knife
+      sourceStation: 2
+    requiredIngredients:
+    - ingredientId: ing_chicken
+      ingredientName: Daging Ayam (Chicken)
+      icon: {fileID: 0}
+      amount: 400
+      unit: g
+      isOptional: 0
+      sourceStation: 1
+    - ingredientId: ing_noodles_egg
+      ingredientName: Sohun & Telur Rebus (Noodles & Egg)
+      icon: {fileID: 0}
+      amount: 100
+      unit: g
+      isOptional: 0
+      sourceStation: 0
+    timeLimitSeconds: 30
     targetTemperature: 0
     stepIllustration: {fileID: 0}
     stepSFX: {fileID: 0}
     fuzzyData: {fileID: 0}
-    scoreMultiplier: 0
+    scoreMultiplier: 1
+  - stepId: step_2
+    stepTitle: Tumis Bumbu Kuning
+    instruction: Tumis bumbu kuning halus di kompor hingga harum aromatik.
+    actionType: 4
+    requiredTool:
+      toolId: tool_pot
+      toolName: Panci Sup (Soup Pot)
+      icon: {fileID: 0}
+      toolType: Pot
+      sourceStation: 3
+    requiredIngredients:
+    - ingredientId: ing_yellow_bumbu
+      ingredientName: Bumbu Kuning (Yellow Spice)
+      icon: {fileID: 0}
+      amount: 100
+      unit: g
+      isOptional: 0
+      sourceStation: 1
+    timeLimitSeconds: 40
+    targetTemperature: 110
+    stepIllustration: {fileID: 0}
+    stepSFX: {fileID: 0}
+    fuzzyData: {fileID: 0}
+    scoreMultiplier: 1
+  - stepId: step_3
+    stepTitle: Rebus Kaldu Soto
+    instruction: Tuangkan kuah kaldu dan rebus bersama ayam hingga mendidih dan matang sempurna.
+    actionType: 5
+    requiredTool:
+      toolId: tool_pot
+      toolName: Panci Sup (Soup Pot)
+      icon: {fileID: 0}
+      toolType: Pot
+      sourceStation: 3
+    requiredIngredients:
+    - ingredientId: ing_broth
+      ingredientName: Kuah Kaldu (Broth Base)
+      icon: {fileID: 0}
+      amount: 500
+      unit: ml
+      isOptional: 0
+      sourceStation: 1
+    timeLimitSeconds: 60
+    targetTemperature: 100
+    stepIllustration: {fileID: 0}
+    stepSFX: {fileID: 0}
+    fuzzyData: {fileID: 0}
+    scoreMultiplier: 1
