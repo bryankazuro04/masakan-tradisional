@@ -51,13 +51,13 @@ MonoBehaviour:
     amount: 100
     unit: g
     isOptional: 0
-    sourceStation: 0
+    sourceStation: 2
   requiredTools:
   - toolId: tool_knife
     toolName: Pisau Dapur (Chef Knife)
     icon: {fileID: 0}
     toolType: Knife
-    sourceStation: 2
+    sourceStation: 0
   - toolId: tool_pot
     toolName: Panci Sup (Soup Pot)
     icon: {fileID: 0}
@@ -73,7 +73,7 @@ MonoBehaviour:
       toolName: Pisau Dapur (Chef Knife)
       icon: {fileID: 0}
       toolType: Knife
-      sourceStation: 2
+      sourceStation: 0
     requiredIngredients:
     - ingredientId: ing_chicken
       ingredientName: Daging Ayam (Chicken)
@@ -88,7 +88,7 @@ MonoBehaviour:
       amount: 100
       unit: g
       isOptional: 0
-      sourceStation: 0
+      sourceStation: 2
     timeLimitSeconds: 30
     targetTemperature: 0
     stepIllustration: {fileID: 0}

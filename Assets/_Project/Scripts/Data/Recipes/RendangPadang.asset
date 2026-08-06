@@ -64,12 +64,12 @@ MonoBehaviour:
     toolName: Pisau Dapur (Chef Knife)
     icon: {fileID: 0}
     toolType: Knife
-    sourceStation: 2
+    sourceStation: 0
   - toolId: tool_mortar
     toolName: Cobek & Ulekan (Mortar & Pestle)
     icon: {fileID: 0}
     toolType: Mortar & Pestle
-    sourceStation: 2
+    sourceStation: 0
   - toolId: tool_wok
     toolName: Wajan / Wok
     icon: {fileID: 0}
@@ -85,7 +85,7 @@ MonoBehaviour:
       toolName: Pisau Dapur (Chef Knife)
       icon: {fileID: 0}
       toolType: Knife
-      sourceStation: 2
+      sourceStation: 0
     requiredIngredients:
     - ingredientId: ing_beef
       ingredientName: Daging Sapi (Beef Chunk)
@@ -109,7 +109,7 @@ MonoBehaviour:
       toolName: Cobek & Ulekan (Mortar & Pestle)
       icon: {fileID: 0}
       toolType: Mortar & Pestle
-      sourceStation: 2
+      sourceStation: 0
     requiredIngredients:
     - ingredientId: ing_bumbu_halus
       ingredientName: Bumbu Halus (Shallot, Garlic, Chili)
@@ -124,7 +124,7 @@ MonoBehaviour:
       amount: 20
       unit: g
       isOptional: 0
-      sourceStation: 0
+      sourceStation: 2
     timeLimitSeconds: 45
     targetTemperature: 0
     stepIllustration: {fileID: 0}
