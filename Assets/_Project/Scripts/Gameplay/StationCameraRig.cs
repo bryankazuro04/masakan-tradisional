@@ -127,12 +127,18 @@ namespace MasakanTradisional.Gameplay
         private void SetAllToInactivePriority()
         {
             if (overviewCamera != null)
+            {
+                overviewCamera.gameObject.SetActive(true);
                 overviewCamera.Priority = inactivePriority;
+            }
 
             foreach (var kvp in _cameraMap)
             {
                 if (kvp.Value != null)
+                {
+                    kvp.Value.gameObject.SetActive(true);
                     kvp.Value.Priority = inactivePriority;
+                }
             }
         }
     }

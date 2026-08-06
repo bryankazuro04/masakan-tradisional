@@ -32,6 +32,8 @@ namespace MasakanTradisional.Gameplay
         [SerializeField] private OvenController ovenController;
  
         [Header("Station Switcher Buttons")]
+        [Tooltip("Optional parent container for navigation buttons bar, hidden when inside workstation panels.")]
+        [SerializeField] private GameObject navButtonsContainer;
         [SerializeField] private Button navShelvesButton;
         [SerializeField] private Button navFridgeButton;
         [SerializeField] private Button navCounterButton;
@@ -228,6 +230,7 @@ namespace MasakanTradisional.Gameplay
             }
  
             currentStation = targetStation;
+            SetNavButtonsInteractable(false);
         }
  
         /// <summary>
@@ -250,10 +253,35 @@ namespace MasakanTradisional.Gameplay
         {
             AudioManager.Instance?.PlayButtonSFX();
             cameraRig?.ReturnToOverview();
-
+ 
             foreach (var kvp in stationControllers)
             {
                 kvp.Value?.Hide();
+            }
+ 
+            SetNavButtonsInteractable(true);
+        }
+ 
+        /// <summary>
+        /// Enables or disables interaction and visibility for all station switcher navigation buttons.
+        /// </summary>
+        public void SetNavButtonsInteractable(bool active)
+        {
+            if (navButtonsContainer != null) navButtonsContainer.SetActive(active);
+
+            SetButtonState(navShelvesButton, active);
+            SetButtonState(navFridgeButton, active);
+            SetButtonState(navCounterButton, active);
+            SetButtonState(navStoveButton, active);
+            SetButtonState(navOvenButton, active);
+        }
+
+        private void SetButtonState(Button btn, bool active)
+        {
+            if (btn != null)
+            {
+                btn.interactable = active;
+                btn.gameObject.SetActive(active);
             }
         }
  
