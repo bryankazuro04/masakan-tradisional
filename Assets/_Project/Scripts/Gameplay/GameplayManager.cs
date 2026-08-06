@@ -148,11 +148,11 @@ namespace MasakanTradisional.Gameplay
  
         private void SetupButtonListeners()
         {
-            if (navShelvesButton != null) navShelvesButton.onClick.AddListener(() => SwitchStation(KitchenStationType.Shelves));
-            if (navFridgeButton != null) navFridgeButton.onClick.AddListener(() => SwitchStation(KitchenStationType.Fridge));
-            if (navCounterButton != null) navCounterButton.onClick.AddListener(() => SwitchStation(KitchenStationType.Counter));
-            if (navStoveButton != null) navStoveButton.onClick.AddListener(() => SwitchStation(KitchenStationType.Stove));
-            if (navOvenButton != null) navOvenButton.onClick.AddListener(() => SwitchStation(KitchenStationType.Oven));
+            if (navShelvesButton != null) navShelvesButton.onClick.AddListener(() => NavigateToStation(KitchenStationType.Shelves));
+            if (navFridgeButton != null) navFridgeButton.onClick.AddListener(() => NavigateToStation(KitchenStationType.Fridge));
+            if (navCounterButton != null) navCounterButton.onClick.AddListener(() => NavigateToStation(KitchenStationType.Counter));
+            if (navStoveButton != null) navStoveButton.onClick.AddListener(() => NavigateToStation(KitchenStationType.Stove));
+            if (navOvenButton != null) navOvenButton.onClick.AddListener(() => NavigateToStation(KitchenStationType.Oven));
  
             if (finishStepButton != null) finishStepButton.onClick.AddListener(CompleteCurrentStep);
  
@@ -243,14 +243,18 @@ namespace MasakanTradisional.Gameplay
         }
  
         /// <summary>
-        /// Returns the Cinemachine camera to the overview shot.
+        /// Returns the Cinemachine camera to the overview shot and hides workstation panels.
         /// Wired to the Back button in the station HUD.
-        /// Does not close the current station panel — the overview is just for navigation.
         /// </summary>
         public void ReturnToOverview()
         {
             AudioManager.Instance?.PlayButtonSFX();
             cameraRig?.ReturnToOverview();
+
+            foreach (var kvp in stationControllers)
+            {
+                kvp.Value?.Hide();
+            }
         }
  
         private KitchenStationType RecommendStationForStep(StepActionType actionType)

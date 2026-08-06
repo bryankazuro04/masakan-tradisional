@@ -24,12 +24,14 @@ namespace MasakanTradisional.Gameplay.Stations
  
         public virtual void Show()
         {
-            if (panelRoot != null) panelRoot.SetActive(true);
+            GameObject target = panelRoot != null ? panelRoot : gameObject;
+            target.SetActive(true);
         }
  
         public virtual void Hide()
         {
-            if (panelRoot != null) panelRoot.SetActive(false);
+            GameObject target = panelRoot != null ? panelRoot : gameObject;
+            target.SetActive(false);
         }
  
         /// <summary>
