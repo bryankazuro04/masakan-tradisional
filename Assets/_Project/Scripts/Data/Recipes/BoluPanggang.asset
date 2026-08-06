@@ -1,0 +1,226 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 72baf9f4e369a24228355244f6dcf676, type: 3}
+  m_Name: BoluPanggang
+  m_EditorClassIdentifier: 
+  recipeId: recipe_bolu_panggang
+  recipeName: Kue Bolu Panggang
+  originRegion: Indonesia
+  description: Kue bolu panggang klasik yang empuk dan lezat, dibuat dari campuran telur, gula pasir, tepung terigu, minyak goreng, dan mentega.
+  difficulty: 0
+  gameplaySceneName: Gameplay
+  recipeIcon: {fileID: 0}
+  dishBannerImage: {fileID: 0}
+  defaultFuzzyData: {fileID: 0}
+  starsRequiredToUnlock: 0
+  prerequisiteRecipe: {fileID: 0}
+  ingredients:
+  - ingredientId: ing_telur
+    ingredientName: 2 butir telur
+    icon: {fileID: 0}
+    amount: 2
+    unit: pcs
+    isOptional: 0
+    sourceStation: 1
+  - ingredientId: ing_gula_pasir
+    ingredientName: 115 gram gula pasir
+    icon: {fileID: 0}
+    amount: 115
+    unit: g
+    isOptional: 0
+    sourceStation: 0
+  - ingredientId: ing_tepung_terigu
+    ingredientName: 150 gram tepung terigu protein sedang
+    icon: {fileID: 0}
+    amount: 150
+    unit: g
+    isOptional: 0
+    sourceStation: 0
+  - ingredientId: ing_minyak_goreng
+    ingredientName: 50 ml minyak goreng
+    icon: {fileID: 0}
+    amount: 50
+    unit: ml
+    isOptional: 0
+    sourceStation: 0
+  - ingredientId: ing_soda_kue
+    ingredientName: 1/2 sdt soda kue
+    icon: {fileID: 0}
+    amount: 0.5
+    unit: sdt
+    isOptional: 0
+    sourceStation: 0
+  - ingredientId: ing_vanili
+    ingredientName: Secukupnya vanili
+    icon: {fileID: 0}
+    amount: 1
+    unit: secukupnya
+    isOptional: 0
+    sourceStation: 0
+  - ingredientId: ing_mentega
+    ingredientName: Secukupnya mentega (untuk olesan loyang)
+    icon: {fileID: 0}
+    amount: 1
+    unit: secukupnya
+    isOptional: 0
+    sourceStation: 1
+  requiredTools:
+  - toolId: tool_mixer
+    toolName: Mikser & Mangkuk Adonan
+    icon: {fileID: 0}
+    toolType: Mixer
+    sourceStation: 2
+  - toolId: tool_loyang
+    toolName: Loyang / Cetakan Kue
+    icon: {fileID: 0}
+    toolType: Baking Mold
+    sourceStation: 2
+  - toolId: tool_oven
+    toolName: Oven Panggang
+    icon: {fileID: 0}
+    toolType: Oven
+    sourceStation: 4
+  stepSequence:
+  - stepId: step_1
+    stepTitle: Persiapan Bahan & Oven
+    instruction: Siapkan semua bahan dan panaskan oven terlebih dahulu.
+    actionType: 0
+    requiredTool:
+      toolId: tool_loyang
+      toolName: Loyang / Cetakan Kue
+      icon: {fileID: 0}
+      toolType: Baking Mold
+      sourceStation: 2
+    requiredIngredients:
+    - ingredientId: ing_telur
+      ingredientName: 2 butir telur
+      icon: {fileID: 0}
+      amount: 2
+      unit: pcs
+      isOptional: 0
+      sourceStation: 1
+    - ingredientId: ing_mentega
+      ingredientName: Secukupnya mentega (untuk olesan loyang)
+      icon: {fileID: 0}
+      amount: 1
+      unit: secukupnya
+      isOptional: 0
+      sourceStation: 1
+    timeLimitSeconds: 30
+    targetTemperature: 0
+    stepIllustration: {fileID: 0}
+    stepSFX: {fileID: 0}
+    fuzzyData: {fileID: 0}
+    scoreMultiplier: 1
+  - stepId: step_2
+    stepTitle: Kocok Adonan Telur & Gula
+    instruction: Kocok (mikser) gula pasir dan telur hingga mengembang. Turunkan kecepatan mikser, lalu masukkan tepung terigu, soda kue, dan vanili sedikit demi sedikit.
+    actionType: 3
+    requiredTool:
+      toolId: tool_mixer
+      toolName: Mikser & Mangkuk Adonan
+      icon: {fileID: 0}
+      toolType: Mixer
+      sourceStation: 2
+    requiredIngredients:
+    - ingredientId: ing_gula_pasir
+      ingredientName: 115 gram gula pasir
+      icon: {fileID: 0}
+      amount: 115
+      unit: g
+      isOptional: 0
+      sourceStation: 0
+    - ingredientId: ing_tepung_terigu
+      ingredientName: 150 gram tepung terigu protein sedang
+      icon: {fileID: 0}
+      amount: 150
+      unit: g
+      isOptional: 0
+      sourceStation: 0
+    - ingredientId: ing_soda_kue
+      ingredientName: 1/2 sdt soda kue
+      icon: {fileID: 0}
+      amount: 0.5
+      unit: sdt
+      isOptional: 0
+      sourceStation: 0
+    - ingredientId: ing_vanili
+      ingredientName: Secukupnya vanili
+      icon: {fileID: 0}
+      amount: 1
+      unit: secukupnya
+      isOptional: 0
+      sourceStation: 0
+    timeLimitSeconds: 45
+    targetTemperature: 0
+    stepIllustration: {fileID: 0}
+    stepSFX: {fileID: 0}
+    fuzzyData: {fileID: 0}
+    scoreMultiplier: 1
+  - stepId: step_3
+    stepTitle: Tambahkan Minyak & Olesi Loyang
+    instruction: Tambahkan minyak goreng, mikser hingga tercampur rata, kemudian matikan mikser. Olesi loyang/cetakan dengan mentega tipis-tipis.
+    actionType: 3
+    requiredTool:
+      toolId: tool_loyang
+      toolName: Loyang / Cetakan Kue
+      icon: {fileID: 0}
+      toolType: Baking Mold
+      sourceStation: 2
+    requiredIngredients:
+    - ingredientId: ing_minyak_goreng
+      ingredientName: 50 ml minyak goreng
+      icon: {fileID: 0}
+      amount: 50
+      unit: ml
+      isOptional: 0
+      sourceStation: 0
+    timeLimitSeconds: 30
+    targetTemperature: 0
+    stepIllustration: {fileID: 0}
+    stepSFX: {fileID: 0}
+    fuzzyData: {fileID: 0}
+    scoreMultiplier: 1
+  - stepId: step_4
+    stepTitle: Panggang Kue di Oven
+    instruction: Tuang adonan ke dalam cetakan sebanyak 3/4 bagian. Panggang di dalam oven selama 30 menit pada suhu 280°C dengan api atas bawah hingga matang berwarna kecoklatan.
+    actionType: 8
+    requiredTool:
+      toolId: tool_oven
+      toolName: Oven Panggang
+      icon: {fileID: 0}
+      toolType: Oven
+      sourceStation: 4
+    requiredIngredients: []
+    timeLimitSeconds: 60
+    targetTemperature: 280
+    stepIllustration: {fileID: 0}
+    stepSFX: {fileID: 0}
+    fuzzyData: {fileID: 0}
+    scoreMultiplier: 1.2
+  - stepId: step_5
+    stepTitle: Keluarkan & Sajikan Kue
+    instruction: Keluarkan kue dari oven, lepaskan dari cetakan, dan sajikan selagi hangat.
+    actionType: 9
+    requiredTool:
+      toolId: tool_loyang
+      toolName: Loyang / Cetakan Kue
+      icon: {fileID: 0}
+      toolType: Baking Mold
+      sourceStation: 2
+    requiredIngredients: []
+    timeLimitSeconds: 30
+    targetTemperature: 0
+    stepIllustration: {fileID: 0}
+    stepSFX: {fileID: 0}
+    fuzzyData: {fileID: 0}
+    scoreMultiplier: 1

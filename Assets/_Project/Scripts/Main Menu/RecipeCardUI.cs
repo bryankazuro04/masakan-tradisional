@@ -26,7 +26,7 @@ namespace MasakanTradisional.UI.MainMenu
         [SerializeField] private TMP_Text lockRequirementText;
         [SerializeField] private Button selectButton;
 
-        public void SetupCard(RecipeData recipeData, int earnedStars, bool isUnlocked, System.Action<string> onRecipeSelected)
+        public void SetupCard(RecipeData recipeData, int earnedStars, bool isUnlocked, System.Action<RecipeData> onRecipeSelected)
         {
             if (recipeTitleText != null) recipeTitleText.text = recipeData.recipeName;
             if (regionText != null) regionText.text = recipeData.originRegion;
@@ -60,12 +60,9 @@ namespace MasakanTradisional.UI.MainMenu
                 selectButton.interactable = isUnlocked;
                 selectButton.onClick.RemoveAllListeners();
                 selectButton.onClick.AddListener(() => {
-                    onRecipeSelected?.Invoke(recipeData.gameplaySceneName);
-                    // Notify state machine directly of recipe selection
-                    if (MasakanTradisional.Core.FSM.GameStateMachine.Instance != null)
-                    {
-                        MasakanTradisional.Core.FSM.GameStateMachine.Instance.SelectRecipe(recipeData);
-                    }
+                    // Notify state machine directly of recipe selection FIRST before loading scene
+                    MasakanTradisional.Core.FSM.GameStateMachine.SetSelectedRecipe(recipeData);
+                    onRecipeSelected?.Invoke(recipeData);
                 });
             }
         }

@@ -90,13 +90,18 @@ namespace MasakanTradisional.UI.MainMenu
             return total;
         }
 
-        private void OnRecipeSelected(string sceneName)
+        private void OnRecipeSelected(RecipeData recipe)
         {
+            if (recipe != null)
+            {
+                MasakanTradisional.Core.FSM.GameStateMachine.SetSelectedRecipe(recipe);
+            }
+
             if (mainMenuManager != null)
             {
                 // Enforce single-scene architecture: Always load "Gameplay" scene.
-                // The selected recipe object is already passed to GameStateMachine.Instance.
-                mainMenuManager.LoadGameplayScene("Gameplay");
+                string targetScene = !string.IsNullOrEmpty(recipe?.gameplaySceneName) ? recipe.gameplaySceneName : "Gameplay";
+                mainMenuManager.LoadGameplayScene(targetScene);
             }
         }
     }

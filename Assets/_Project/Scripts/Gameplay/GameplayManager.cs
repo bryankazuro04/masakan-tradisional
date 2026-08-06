@@ -131,9 +131,15 @@ namespace MasakanTradisional.Gameplay
  
         private void InitializeRecipeData()
         {
-            if (GameStateMachine.Instance != null && GameStateMachine.Instance.CurrentSelectedRecipe != null)
+            if (GameStateMachine.SelectedRecipe != null)
+            {
+                activeRecipe = GameStateMachine.SelectedRecipe;
+                Debug.Log($"[GameplayManager] Successfully loaded selected recipe: '{activeRecipe.recipeName}'.");
+            }
+            else if (GameStateMachine.Instance != null && GameStateMachine.Instance.CurrentSelectedRecipe != null)
             {
                 activeRecipe = GameStateMachine.Instance.CurrentSelectedRecipe;
+                Debug.Log($"[GameplayManager] Successfully loaded selected recipe from Instance: '{activeRecipe.recipeName}'.");
             }
             else
             {
@@ -187,11 +193,10 @@ namespace MasakanTradisional.Gameplay
             CookingStep step = activeRecipe.GetStep(index);
             KitchenStationType homeStation = RecommendStationForStep(step.actionType);
  
-            // Ask the station itself whether it's heat-based, instead of maintaining
-            // a second switch statement that has to be kept in sync with the first.
-            if (GameStateMachine.Instance != null &&
-                stationControllers.TryGetValue(homeStation, out IStationController homeController) &&
-                homeController is IHeatStationController)
+            bool isHeatStep = stationControllers.TryGetValue(homeStation, out IStationController homeController) &&
+                              homeController is IHeatStationController;
+ 
+            if (GameStateMachine.Instance != null && isHeatStep)
             {
                 GameStateMachine.Instance.GoToCooking();
             }
@@ -210,7 +215,10 @@ namespace MasakanTradisional.Gameplay
                 kvp.Value.SetStep(step);
             }
  
-            SwitchStation(homeStation);
+            // Always return to overview mode when loading any step (at game start or after finishing a step),
+            // waiting for player input to select and open a station.
+            ReturnToOverviewInternal(playSFX: false);
+ 
             RefreshFinishButtonAvailability();
         }
  
@@ -251,7 +259,12 @@ namespace MasakanTradisional.Gameplay
         /// </summary>
         public void ReturnToOverview()
         {
-            AudioManager.Instance?.PlayButtonSFX();
+            ReturnToOverviewInternal(playSFX: true);
+        }
+ 
+        private void ReturnToOverviewInternal(bool playSFX)
+        {
+            if (playSFX) AudioManager.Instance?.PlayButtonSFX();
             cameraRig?.ReturnToOverview();
  
             foreach (var kvp in stationControllers)

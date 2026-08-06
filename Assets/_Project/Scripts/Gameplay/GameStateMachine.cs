@@ -31,8 +31,15 @@ namespace MasakanTradisional.Core.FSM
     {
         public static GameStateMachine Instance { get; private set; }
 
+        private static RecipeData _selectedRecipe;
+        public static RecipeData SelectedRecipe => _selectedRecipe;
+
         public IGameState CurrentState { get; private set; }
-        public RecipeData CurrentSelectedRecipe { get; private set; }
+        public RecipeData CurrentSelectedRecipe
+        {
+            get => _selectedRecipe;
+            private set => _selectedRecipe = value;
+        }
 
         // System Events
         public event Action<IGameState> OnStateChanged;
@@ -126,8 +133,8 @@ namespace MasakanTradisional.Core.FSM
         }
 
         /// <summary>
-        /// Called when a recipe selection button is clicked on RecipeCardUI.
-        /// Caches the selected recipe and transitions the FSM to KitchenPrepState.
+        /// Called when a recipe selection button is clicked on RecipeCardUI or RecipeSelectUI.
+        /// Caches the selected recipe statically and transitions the FSM to KitchenPrepState if instance exists.
         /// </summary>
         public void SelectRecipe(RecipeData recipeData)
         {
@@ -137,11 +144,35 @@ namespace MasakanTradisional.Core.FSM
                 return;
             }
 
-            CurrentSelectedRecipe = recipeData;
-            OnRecipeSelected?.Invoke(recipeData);
+            _selectedRecipe = recipeData;
 
-            Debug.Log($"[GameStateMachine] Recipe Selected: '{recipeData.recipeName}'. Transitioning to KitchenPrepState...");
-            ChangeState<KitchenPrepState, RecipeData>(recipeData);
+            if (Instance != null)
+            {
+                Instance.OnRecipeSelected?.Invoke(recipeData);
+                Debug.Log($"[GameStateMachine] Recipe Selected: '{recipeData.recipeName}'. Transitioning to KitchenPrepState...");
+                Instance.ChangeState<KitchenPrepState, RecipeData>(recipeData);
+            }
+            else
+            {
+                Debug.Log($"[GameStateMachine] Recipe Selected statically: '{recipeData.recipeName}'.");
+            }
+        }
+
+        /// <summary>
+        /// Static helper to select a recipe from anywhere without requiring an active instance check.
+        /// </summary>
+        public static void SetSelectedRecipe(RecipeData recipeData)
+        {
+            if (recipeData == null) return;
+            _selectedRecipe = recipeData;
+            if (Instance != null)
+            {
+                Instance.SelectRecipe(recipeData);
+            }
+            else
+            {
+                Debug.Log($"[GameStateMachine] Static Recipe set: '{recipeData.recipeName}'.");
+            }
         }
 
         // Shortcut helper methods
